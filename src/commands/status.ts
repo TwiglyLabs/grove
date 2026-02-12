@@ -1,16 +1,7 @@
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
 import type { GroveConfig } from '../config.js';
-import type { EnvironmentState } from '../state.js';
-import { printSection, printKeyValue, printWarning, printUrlTable } from '../output.js';
-import { sanitizeBranchName } from '../sanitize.js';
-import { execSync } from 'child_process';
-
-function getStateFilePath(config: GroveConfig): string {
-  const branch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
-  const worktreeId = sanitizeBranchName(branch);
-  return join(config.repoRoot, '.grove', `${worktreeId}.json`);
-}
+import { readState } from '../state.js';
+import { printWarning, printDashboard } from '../output.js';
+import type { DashboardData } from '../output.js';
 
 function isProcessRunning(pid: number): boolean {
   try {
@@ -22,31 +13,55 @@ function isProcessRunning(pid: number): boolean {
 }
 
 export async function statusCommand(config: GroveConfig): Promise<void> {
-  const stateFile = getStateFilePath(config);
+  const state = readState(config);
 
-  if (!existsSync(stateFile)) {
+  if (!state) {
     printWarning('No state file found - environment is not running');
     return;
   }
 
-  const stateContent = readFileSync(stateFile, 'utf-8');
-  const state: EnvironmentState = JSON.parse(stateContent);
+  // Build dashboard data from state
+  const processes = Object.entries(state.processes).map(([name, info]) => ({
+    name,
+    pid: info.pid,
+    startedAt: info.startedAt,
+    running: isProcessRunning(info.pid),
+  }));
 
-  printSection('Environment Status');
+  const portForwards = Object.entries(state.ports)
+    .filter(([name]) => config.services.some(s => s.name === name && s.portForward))
+    .map(([name, port]) => ({
+      service: name,
+      port,
+      healthy: true, // Port forwards are assumed healthy if state exists
+    }));
 
-  printKeyValue('Project', config.project.name);
-  printKeyValue('Namespace', state.namespace);
-  printKeyValue('Branch', state.branch);
-  printKeyValue('Worktree ID', state.worktreeId);
-  printKeyValue('Last Ensure', new Date(state.lastEnsure).toLocaleString());
+  // Determine overall state
+  const allRunning = processes.every(p => p.running);
+  const overallState: DashboardData['state'] = processes.length === 0
+    ? 'healthy'
+    : allRunning
+      ? 'healthy'
+      : processes.some(p => p.running)
+        ? 'degraded'
+        : 'error';
 
-  printSection('Processes');
+  const dashboardData: DashboardData = {
+    state: overallState,
+    namespace: state.namespace,
+    branch: state.branch,
+    worktreeId: state.worktreeId,
+    lastEnsure: state.lastEnsure,
+    health: {
+      namespace: state.namespace,
+      healthy: overallState === 'healthy',
+      pods: [], // Would require kubectl call — omit for now
+    },
+    portForwards,
+    processes,
+    urls: state.urls,
+    ports: state.ports,
+  };
 
-  for (const [name, processInfo] of Object.entries(state.processes)) {
-    const running = isProcessRunning(processInfo.pid);
-    const status = running ? 'Running' : 'Stopped';
-    printKeyValue(name, `PID ${processInfo.pid} - ${status}`, 2);
-  }
-
-  printUrlTable(state.urls);
+  printDashboard(dashboardData);
 }
