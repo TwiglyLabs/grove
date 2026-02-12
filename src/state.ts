@@ -10,6 +10,13 @@ export interface ProcessInfo {
   startedAt: string;
 }
 
+export interface SimulatorState {
+  udid: string;
+  name: string;
+  basedOn: string;
+  status: 'booted' | 'shutdown' | 'unknown';
+}
+
 export interface EnvironmentState {
   namespace: string;
   branch: string;
@@ -18,6 +25,7 @@ export interface EnvironmentState {
   urls: Record<string, string>;
   processes: Record<string, ProcessInfo>;
   lastEnsure: string;
+  simulator?: SimulatorState;
 }
 
 const STATE_DIR_NAME = '.grove';
@@ -126,6 +134,26 @@ export function releasePortBlock(config: GroveConfig, worktreeId: string): void 
     } catch (error) {
       console.warn(`Failed to release port block: ${error}`);
     }
+  }
+}
+
+/**
+ * Read-only state access. Returns state without locking, or null if missing.
+ * Used by test runner and utility commands that just need to read current state.
+ */
+export function readState(config: GroveConfig): EnvironmentState | null {
+  const worktreeId = getWorktreeId();
+  const stateFile = getStateFilePath(config, worktreeId);
+
+  if (!existsSync(stateFile)) {
+    return null;
+  }
+
+  try {
+    const content = readFileSync(stateFile, 'utf-8');
+    return JSON.parse(content) as EnvironmentState;
+  } catch {
+    return null;
   }
 }
 

@@ -3,11 +3,12 @@ import { join } from 'path';
 import type { GroveConfig } from '../config.js';
 import type { EnvironmentState } from '../state.js';
 import { printSection, printKeyValue, printWarning, printUrlTable } from '../output.js';
+import { sanitizeBranchName } from '../sanitize.js';
 import { execSync } from 'child_process';
 
 function getStateFilePath(config: GroveConfig): string {
   const branch = execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
-  const worktreeId = branch.replace(/[^a-z0-9-]/gi, '-').toLowerCase().substring(0, 63);
+  const worktreeId = sanitizeBranchName(branch);
   return join(config.repoRoot, '.grove', `${worktreeId}.json`);
 }
 

@@ -71,6 +71,63 @@ const FrontendSchema = z.object({
   health: HealthCheckSchema.optional(),
 });
 
+// Testing schemas
+const TestSuiteSchema = z.object({
+  name: z.string(),
+  paths: z.array(z.string()),
+});
+
+const MobileTestingSchema = z.object({
+  runner: z.string().default('maestro'),
+  basePath: z.string(),
+  suites: z.array(TestSuiteSchema).optional(),
+  envVars: z.record(z.string()).optional(),
+});
+
+const PlatformTestingSchema = z.object({
+  runner: z.string(),
+  cwd: z.string(),
+  envVars: z.record(z.string()).optional(),
+});
+
+const ObservabilitySchema = z.object({
+  serviceName: z.string(),
+  traceEndpoint: z.string().optional(),
+});
+
+const TestingSchema = z.object({
+  mobile: MobileTestingSchema.optional(),
+  webapp: PlatformTestingSchema.optional(),
+  api: PlatformTestingSchema.optional(),
+  observability: ObservabilitySchema.optional(),
+  historyDir: z.string().default('.grove/test-history'),
+  historyLimit: z.number().default(10),
+  defaultTimeout: z.number().default(300000),
+});
+
+// Simulator schema
+const SimulatorSchema = z.object({
+  platform: z.enum(['ios']).default('ios'),
+  bundleId: z.string(),
+  appName: z.string(),
+  simulatorPrefix: z.string(),
+  baseDevice: z.array(z.string()),
+  deepLinkScheme: z.string(),
+  metroFrontend: z.string(),
+});
+
+// Utilities schemas
+const ShellTargetSchema = z.object({
+  name: z.string(),
+  podSelector: z.string().optional(),
+  shell: z.string().optional(),
+});
+
+const UtilitiesSchema = z.object({
+  shellTargets: z.array(ShellTargetSchema).optional(),
+  reloadTargets: z.array(z.string()).optional(),
+});
+
 // Main config schema
 const GroveConfigSchema = z.object({
   project: z.object({
@@ -86,6 +143,9 @@ const GroveConfigSchema = z.object({
   services: z.array(ServiceSchema),
   frontends: z.array(FrontendSchema).optional(),
   bootstrap: z.array(BootstrapStepSchema).optional(),
+  testing: TestingSchema.optional(),
+  simulator: SimulatorSchema.optional(),
+  utilities: UtilitiesSchema.optional(),
 });
 
 export type BootstrapCheck = z.infer<typeof BootstrapCheckSchema>;
@@ -96,6 +156,14 @@ export type PortForward = z.infer<typeof PortForwardSchema>;
 export type HealthCheck = z.infer<typeof HealthCheckSchema>;
 export type Service = z.infer<typeof ServiceSchema>;
 export type Frontend = z.infer<typeof FrontendSchema>;
+export type TestSuite = z.infer<typeof TestSuiteSchema>;
+export type MobileTesting = z.infer<typeof MobileTestingSchema>;
+export type PlatformTesting = z.infer<typeof PlatformTestingSchema>;
+export type Observability = z.infer<typeof ObservabilitySchema>;
+export type Testing = z.infer<typeof TestingSchema>;
+export type SimulatorConfig = z.infer<typeof SimulatorSchema>;
+export type ShellTarget = z.infer<typeof ShellTargetSchema>;
+export type Utilities = z.infer<typeof UtilitiesSchema>;
 export type GroveConfig = z.infer<typeof GroveConfigSchema> & {
   portBlockSize: number;
   repoRoot: string;
