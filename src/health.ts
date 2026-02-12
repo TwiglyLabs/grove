@@ -1,4 +1,5 @@
 import { createConnection } from 'net';
+import http from 'http';
 
 export async function checkHealth(
   protocol: 'http' | 'tcp',
@@ -33,7 +34,6 @@ async function checkTcpHealth(host: string, port: number): Promise<boolean> {
 
 async function checkHttpHealth(host: string, port: number, path: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const http = require('http');
     const req = http.request(
       {
         host,
@@ -42,8 +42,9 @@ async function checkHttpHealth(host: string, port: number, path: string): Promis
         method: 'GET',
         timeout: 2000,
       },
-      (res: any) => {
-        resolve(res.statusCode >= 200 && res.statusCode < 500);
+      (res) => {
+        const code = res.statusCode ?? 0;
+        resolve(code >= 200 && code < 500);
       }
     );
 

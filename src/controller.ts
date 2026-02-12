@@ -12,6 +12,11 @@ import { waitForHealth } from './health.js';
 import { printInfo, printSuccess, printError, printSection } from './output.js';
 import { Timer } from './timing.js';
 
+export interface UpOptions {
+  frontend?: string;
+  all?: boolean;
+}
+
 async function waitForDeployments(namespace: string, timeoutSeconds: number = 300): Promise<void> {
   printInfo('Waiting for deployments to be ready...');
 
@@ -32,6 +37,8 @@ async function startPortForwards(config: GroveConfig, state: EnvironmentState): 
   const logsDir = join(config.repoRoot, '.grove', 'logs');
 
   for (const service of config.services) {
+    if (!service.portForward) continue;
+
     const localPort = state.ports[service.name];
     const remotePort = service.portForward.remotePort;
     const hostIp = service.portForward.hostIp || '127.0.0.1';
@@ -53,22 +60,36 @@ async function startPortForwards(config: GroveConfig, state: EnvironmentState): 
   }
 }
 
-async function startFrontends(config: GroveConfig, state: EnvironmentState): Promise<void> {
+async function startFrontends(config: GroveConfig, state: EnvironmentState, options: UpOptions = {}): Promise<void> {
   if (!config.frontends || config.frontends.length === 0) {
     return;
+  }
+
+  // Determine which frontends to start
+  let frontendsToStart = config.frontends;
+  if (!options.all && !options.frontend) {
+    // Default: don't start any frontends (backend-only)
+    return;
+  }
+  if (options.frontend) {
+    frontendsToStart = config.frontends.filter(f => f.name === options.frontend);
+    if (frontendsToStart.length === 0) {
+      printError(`Frontend "${options.frontend}" not found in config`);
+      return;
+    }
   }
 
   printSection('Starting frontend dev servers');
 
   const logsDir = join(config.repoRoot, '.grove', 'logs');
 
-  for (const frontend of config.frontends) {
+  for (const frontend of frontendsToStart) {
     const port = state.ports[frontend.name];
 
     printInfo(`Starting ${frontend.name} on port ${port}`);
 
     const devServer = new GenericDevServer(frontend, port);
-    const processInfo = await devServer.start(config.repoRoot, logsDir);
+    const processInfo = await devServer.start(config.repoRoot, logsDir, state);
 
     state.processes[frontend.name] = processInfo;
 
@@ -79,9 +100,9 @@ async function startFrontends(config: GroveConfig, state: EnvironmentState): Pro
 async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Promise<void> {
   printSection('Running health checks');
 
-  // Health check services
+  // Health check services (only those with port-forwards)
   for (const service of config.services) {
-    if (!service.health) {
+    if (!service.health || !service.portForward) {
       continue;
     }
 
@@ -124,7 +145,7 @@ async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Pro
   }
 }
 
-export async function ensureEnvironment(config: GroveConfig): Promise<EnvironmentState> {
+export async function ensureEnvironment(config: GroveConfig, options: UpOptions = {}): Promise<EnvironmentState> {
   const timer = new Timer();
 
   printSection('Ensuring Cluster');
@@ -149,7 +170,7 @@ export async function ensureEnvironment(config: GroveConfig): Promise<Environmen
   await waitForDeployments(state.namespace);
 
   await startPortForwards(config, state);
-  await startFrontends(config, state);
+  await startFrontends(config, state, options);
   await healthCheckAll(config, state);
 
   printSection('Saving State');

@@ -1,4 +1,5 @@
 import { execSync } from 'child_process';
+import { existsSync } from 'fs';
 import type { GroveConfig } from './config.js';
 import { printInfo, printSuccess, printWarning } from './output.js';
 
@@ -35,8 +36,7 @@ export function pruneOrphanedResources(config: GroveConfig): void {
     const stateFile = `${stateDir}/${worktreeId}.json`;
 
     try {
-      const fs = require('fs');
-      if (!fs.existsSync(stateFile)) {
+      if (!existsSync(stateFile)) {
         printWarning(`Orphaned namespace: ${ns} (no state file)`);
 
         // Delete the namespace

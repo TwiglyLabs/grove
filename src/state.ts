@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import * as lockfile from 'proper-lockfile';
@@ -93,11 +93,12 @@ export function allocatePortBlock(config: GroveConfig): Record<string, number> {
     startPort += blockSize;
   }
 
-  // Allocate ports for services and frontends
+  // Allocate ports for services with portForward and frontends
   const ports: Record<string, number> = {};
   let offset = 0;
 
   for (const service of config.services) {
+    if (!service.portForward) continue;
     ports[service.name] = startPort + offset;
     offset++;
   }
@@ -118,9 +119,7 @@ export function releasePortBlock(config: GroveConfig, worktreeId: string): void 
     try {
       const release = lockfile.lockSync(stateFile);
       try {
-        // Just delete the state file to release the ports
-        const fs = await import('fs/promises');
-        await fs.unlink(stateFile);
+        unlinkSync(stateFile);
       } finally {
         release();
       }
@@ -155,8 +154,9 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
   const ports = allocatePortBlock(config);
   const urls: Record<string, string> = {};
 
-  // Generate URLs for services
+  // Generate URLs for services with ports
   for (const service of config.services) {
+    if (!service.portForward) continue;
     const port = ports[service.name];
     const protocol = service.health?.protocol === 'tcp' ? 'tcp' : 'http';
     urls[service.name] = `${protocol}://127.0.0.1:${port}`;

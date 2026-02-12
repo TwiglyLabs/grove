@@ -1,62 +1,56 @@
-import { spawn, ChildProcess } from 'child_process';
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { spawn } from 'child_process';
+import { openSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { Frontend } from '../config.js';
-import type { ProcessInfo } from '../state.js';
+import type { EnvironmentState, ProcessInfo } from '../state.js';
+import { resolveTemplates } from '../template.js';
 import { checkHealth } from '../health.js';
 
 export class GenericDevServer {
-  private process: ChildProcess | null = null;
-
   constructor(
     private config: Frontend,
     private port: number
   ) {}
 
-  async start(repoRoot: string, logsDir: string): Promise<ProcessInfo> {
+  async start(repoRoot: string, logsDir: string, state?: EnvironmentState): Promise<ProcessInfo> {
     // Ensure logs directory exists
     if (!existsSync(logsDir)) {
       mkdirSync(logsDir, { recursive: true });
     }
 
     const logFile = join(logsDir, `${this.config.name}.log`);
-    writeFileSync(logFile, '', { flag: 'w' });
-
     const cwd = join(repoRoot, this.config.cwd);
+
+    // Resolve template variables in env vars
+    const resolvedEnv = state && this.config.env
+      ? resolveTemplates(this.config.env, state)
+      : this.config.env || {};
 
     // Prepare environment
     const env = {
       ...process.env,
       PORT: String(this.port),
-      ...this.config.env,
+      ...resolvedEnv,
     };
+
+    // Open file descriptors for stdout/stderr logging
+    const out = openSync(logFile, 'w');
+    const err = openSync(logFile, 'a');
 
     // Parse command (simple split on spaces - assumes no quoted args with spaces)
     const [cmd, ...args] = this.config.command.split(' ');
 
-    this.process = spawn(cmd, args, {
+    const child = spawn(cmd, args, {
       cwd,
       env,
-      detached: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+      stdio: ['ignore', out, err],
     });
 
-    // Write logs
-    this.process.stdout?.on('data', (data) => {
-      writeFileSync(logFile, data, { flag: 'a' });
-    });
-
-    this.process.stderr?.on('data', (data) => {
-      writeFileSync(logFile, data, { flag: 'a' });
-    });
-
-    this.process.on('exit', (code) => {
-      const message = `${this.config.name} exited with code ${code}\n`;
-      writeFileSync(logFile, message, { flag: 'a' });
-    });
+    child.unref();
 
     return {
-      pid: this.process.pid!,
+      pid: child.pid!,
       startedAt: new Date().toISOString(),
     };
   }

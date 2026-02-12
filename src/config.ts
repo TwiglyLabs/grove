@@ -58,7 +58,7 @@ const HealthCheckSchema = z.object({
 const ServiceSchema = z.object({
   name: z.string(),
   build: ServiceBuildSchema.optional(),
-  portForward: PortForwardSchema,
+  portForward: PortForwardSchema.optional(),
   health: HealthCheckSchema.optional(),
 });
 
@@ -123,10 +123,10 @@ export function loadConfig(rootDir?: string): GroveConfig {
   // Validate with zod
   const validatedConfig = GroveConfigSchema.parse(rawConfig);
 
-  // Compute port block size
-  const serviceCount = validatedConfig.services.length;
+  // Compute port block size (only services with portForward need ports)
+  const portForwardedServiceCount = validatedConfig.services.filter(s => s.portForward).length;
   const frontendCount = validatedConfig.frontends?.length ?? 0;
-  const portBlockSize = serviceCount + frontendCount + 1; // +1 for buffer/future use
+  const portBlockSize = portForwardedServiceCount + frontendCount + 1; // +1 for buffer/future use
 
   return {
     ...validatedConfig,

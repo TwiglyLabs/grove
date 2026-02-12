@@ -1,5 +1,5 @@
-import { spawn, ChildProcess } from 'child_process';
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { spawn } from 'child_process';
+import { openSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { ProcessInfo } from '../state.js';
 
@@ -12,8 +12,6 @@ export interface PortForwardConfig {
 }
 
 export class PortForwardProcess {
-  private process: ChildProcess | null = null;
-
   constructor(private config: PortForwardConfig) {}
 
   async start(logsDir: string): Promise<ProcessInfo> {
@@ -25,7 +23,10 @@ export class PortForwardProcess {
     }
 
     const logFile = join(logsDir, `port-forward-${serviceName}.log`);
-    const logStream = writeFileSync(logFile, '', { flag: 'w' });
+
+    // Open file descriptors for stdout/stderr logging
+    const out = openSync(logFile, 'w');
+    const err = openSync(logFile, 'a');
 
     // kubectl port-forward -n <namespace> svc/<service> <localPort>:<remotePort> --address <hostIp>
     const args = [
@@ -38,39 +39,20 @@ export class PortForwardProcess {
       hostIp,
     ];
 
-    this.process = spawn('kubectl', args, {
-      detached: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
+    const child = spawn('kubectl', args, {
+      detached: true,
+      stdio: ['ignore', out, err],
     });
 
-    // Write logs
-    this.process.stdout?.on('data', (data) => {
-      writeFileSync(logFile, data, { flag: 'a' });
-    });
-
-    this.process.stderr?.on('data', (data) => {
-      writeFileSync(logFile, data, { flag: 'a' });
-    });
-
-    this.process.on('exit', (code) => {
-      const message = `Port forward exited with code ${code}\n`;
-      writeFileSync(logFile, message, { flag: 'a' });
-    });
+    child.unref();
 
     // Wait a bit for the port forward to establish
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     return {
-      pid: this.process.pid!,
+      pid: child.pid!,
       startedAt: new Date().toISOString(),
     };
-  }
-
-  async stop(): Promise<void> {
-    if (this.process && !this.process.killed) {
-      this.process.kill();
-      this.process = null;
-    }
   }
 
   static async stopByPid(pid: number): Promise<void> {
