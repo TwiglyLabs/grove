@@ -8,6 +8,9 @@ import { statusCommand } from './commands/status.js';
 import { watchCommand } from './commands/watch.js';
 import { pruneCommand } from './commands/prune.js';
 import { logsCommand } from './commands/logs.js';
+import { testCommand } from './commands/test.js';
+import { shellCommand } from './commands/shell.js';
+import { reloadCommand } from './commands/reload.js';
 import { printError } from './output.js';
 
 function printUsage(): void {
@@ -21,11 +24,27 @@ Usage:
   grove status                             Show environment status
   grove watch                              Watch for file changes and rebuild
   grove prune                              Clean up orphaned resources
-  grove logs <service>                     Show logs for a service
+  grove logs <service> [--pod]             Show logs for a service
+  grove test <mobile|webapp|api> [opts]    Run tests
+  grove shell <service>                    Open shell in a service pod
+  grove reload <service>                   Trigger service reload
 
 Options:
   --frontend <name>   Start specific frontend only (for 'up' command)
   --all              Start all frontends (for 'up' command)
+  --pod              Show kubectl pod logs instead of file logs (for 'logs')
+
+Test options:
+  --suite <name>     Named test suite (mobile)
+  --flow <path>      Flow path, repeatable (mobile)
+  --file <path>      Test file filter (webapp, api)
+  --grep <pattern>   Test name filter (webapp, api)
+  --use-dev          Use dev environment for API URL (api)
+  --ai               Include AI tests (api)
+  --exclude-ai       Exclude AI tests (api)
+  --no-ensure        Skip auto-ensure
+  --timeout <ms>     Timeout in milliseconds
+  --verbose          Verbose output
   `);
 }
 
@@ -83,7 +102,22 @@ async function main(): Promise<void> {
           printError('Please specify a service name');
           process.exit(1);
         }
-        await logsCommand(config, serviceName);
+        await logsCommand(config, serviceName, args.slice(2));
+        break;
+      }
+
+      case 'test': {
+        await testCommand(config, args.slice(1));
+        break;
+      }
+
+      case 'shell': {
+        await shellCommand(config, args[1]);
+        break;
+      }
+
+      case 'reload': {
+        await reloadCommand(config, args[1]);
         break;
       }
 
