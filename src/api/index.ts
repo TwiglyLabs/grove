@@ -83,5 +83,10 @@ import * as repo from './repo.js';
 import * as config from './config.js';
 import * as workspace from './workspace.js';
 import * as request from './request.js';
+import * as environment from './environment.js';
+import * as testing from './testing.js';
+import * as logs from './logs.js';
+import * as shell from './shell.js';
+import * as simulator from './simulator.js';
 
-export { repo, config, workspace, request };
+export { repo, config, workspace, request, environment, testing, logs, shell, simulator };
