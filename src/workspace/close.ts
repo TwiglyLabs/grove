@@ -48,14 +48,24 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
     }
   }
 
-  // Check all synced (no active sync state)
-  if (state.sync) {
-    throw new Error('Workspace has unfinished sync. Run `grove workspace sync` first.');
-  }
-
-  // Pre-check: can all repos fast-forward?
+  // Sync workspace to ensure it has latest upstream changes, then verify FF.
+  // Without this, if origin/parentBranch has advanced but the source repo's
+  // local parentBranch hasn't been pulled, the FF merge could succeed but
+  // leave the source repo missing upstream commits.
   if (!dryRun) {
-    // Save source repo branches so we can restore if pre-check fails.
+    try {
+      await syncWorkspace(state.branch);
+    } catch (e) {
+      if (e instanceof ConflictError) {
+        throw new Error(
+          `Cannot merge: conflicts in '${e.conflicted}'. ` +
+          `Resolve conflicts, commit, then run 'grove workspace sync ${state.branch}' to complete syncing.`,
+        );
+      }
+      throw e;
+    }
+
+    // Save source repo branches so we can restore if FF check fails.
     const savedBranches: Array<{ source: string; branch: string }> = [];
     for (const repo of state.repos) {
       savedBranches.push({ source: repo.source, branch: getCurrentBranch(repo.source) });
@@ -67,41 +77,14 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
       }
     };
 
-    // Check if any repo can't fast-forward
-    let needsSync = false;
+    // Verify all repos can FF after sync
     for (const repo of state.repos) {
       checkout(repo.source, repo.parentBranch);
       if (!canFFMerge(repo.source, repo.parentBranch, state.branch)) {
-        needsSync = true;
-        break;
-      }
-    }
-
-    if (needsSync) {
-      // Restore branches before sync — sync operates on worktrees, not source repos
-      restoreBranches();
-
-      try {
-        await syncWorkspace(state.branch);
-      } catch (e) {
-        if (e instanceof ConflictError) {
-          throw new Error(
-            `Cannot merge: conflicts in '${e.conflicted}'. ` +
-            `Resolve conflicts, commit, then run 'grove workspace sync ${state.branch}' to complete syncing.`,
-          );
-        }
-        throw e;
-      }
-
-      // Re-check ALL repos after sync
-      for (const repo of state.repos) {
-        checkout(repo.source, repo.parentBranch);
-        if (!canFFMerge(repo.source, repo.parentBranch, state.branch)) {
-          restoreBranches();
-          throw new Error(
-            `Still cannot fast-forward '${repo.name}' after sync. Resolve manually.`,
-          );
-        }
+        restoreBranches();
+        throw new Error(
+          `Cannot fast-forward '${repo.name}' after sync. Source repo may have local commits not on origin.`,
+        );
       }
     }
     // On success, source repos are on parentBranch — the close loop expects this

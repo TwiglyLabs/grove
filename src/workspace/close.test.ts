@@ -59,6 +59,8 @@ vi.mock('./sync.js', () => ({
 describe('closeWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: sync succeeds (close --merge always syncs before FF check)
+    mockSyncWorkspace.mockResolvedValue({ synced: [], details: [] });
   });
 
   const createWorkspaceState = (overrides?: Partial<WorkspaceState>): WorkspaceState => ({
@@ -91,7 +93,7 @@ describe('closeWorkspace', () => {
   });
 
   describe('merge mode', () => {
-    it('closes workspace successfully with merge', async () => {
+    it('syncs then closes workspace successfully', async () => {
       const state = createWorkspaceState();
       mockReadWorkspaceState.mockReturnValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
@@ -101,6 +103,9 @@ describe('closeWorkspace', () => {
 
       await closeWorkspace('feature-x', 'merge');
 
+      // Verify sync was called before anything else
+      expect(mockSyncWorkspace).toHaveBeenCalledWith('feature-x');
+
       // Verify state was set to closing
       expect(mockWriteWorkspaceState).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -108,11 +113,9 @@ describe('closeWorkspace', () => {
         })
       );
 
-      // Pre-check checkouts repos in order (parent, child) to parentBranch.
-      // Close loop then sorts children-first and checks out again.
-      // Verify the close loop's checkouts (after pre-check) process child before parent.
+      // Verify close loop processes children before parent
       const checkoutCalls = mockCheckout.mock.calls;
-      // Pre-check: [parent→main, child→main], close loop: [child→main, parent→main]
+      // FF check: [parent→main, child→main], close loop: [child→main, parent→main]
       expect(checkoutCalls[2]).toEqual(['/tmp/repos/myproject/public', 'main']);
       expect(checkoutCalls[3]).toEqual(['/tmp/repos/myproject', 'main']);
 
@@ -150,7 +153,7 @@ describe('closeWorkspace', () => {
       expect(mockDeleteWorkspaceState).toHaveBeenCalledWith('myproject-feature-x');
     });
 
-    it('processes children before parent', async () => {
+    it('processes children before parent in close loop', async () => {
       const state = createWorkspaceState();
       mockReadWorkspaceState.mockReturnValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
@@ -161,7 +164,7 @@ describe('closeWorkspace', () => {
       await closeWorkspace('feature-x', 'merge');
 
       const checkoutCalls = mockCheckout.mock.calls;
-      // Pre-check checkouts are first (parent, child), then close loop (child, parent)
+      // FF check checkouts are first (parent, child), then close loop (child, parent)
       expect(checkoutCalls[2][0]).toBe('/tmp/repos/myproject/public'); // child first in close loop
       expect(checkoutCalls[3][0]).toBe('/tmp/repos/myproject'); // parent last in close loop
     });
@@ -175,28 +178,10 @@ describe('closeWorkspace', () => {
         "Uncommitted changes in 'myproject'. Commit or stash before closing."
       );
 
+      // Should fail before sync
+      expect(mockSyncWorkspace).not.toHaveBeenCalled();
       expect(mockCheckout).not.toHaveBeenCalled();
       expect(mockMergeFFOnly).not.toHaveBeenCalled();
-    });
-
-    it('throws error when workspace has unfinished sync', async () => {
-      const state = createWorkspaceState({
-        sync: {
-          startedAt: '2026-02-13T14:00:00Z',
-          repos: {
-            myproject: 'synced',
-            public: 'pending',
-          },
-        },
-      });
-      mockReadWorkspaceState.mockReturnValue(state);
-      mockHasDirtyWorkingTree.mockReturnValue(false);
-
-      await expect(closeWorkspace('feature-x', 'merge')).rejects.toThrow(
-        'Workspace has unfinished sync. Run `grove workspace sync` first.'
-      );
-
-      expect(mockCheckout).not.toHaveBeenCalled();
     });
 
     it('throws error when workspace is not active', async () => {
@@ -212,7 +197,7 @@ describe('closeWorkspace', () => {
       const state = createWorkspaceState();
       mockReadWorkspaceState.mockReturnValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
-      mockCanFFMerge.mockReturnValue(true); // pre-check passes
+      mockCanFFMerge.mockReturnValue(true); // FF check passes
       mockGetCurrentBranch.mockReturnValue('some-branch');
       mockMergeFFOnly.mockReturnValueOnce(true); // child succeeds
       mockMergeFFOnly.mockReturnValueOnce(false); // parent fails (race condition)
@@ -223,8 +208,10 @@ describe('closeWorkspace', () => {
       );
 
       // Verify state was set to failed
-      const finalWriteCall = mockWriteWorkspaceState.mock.calls[1][0];
-      expect(finalWriteCall.status).toBe('failed');
+      const failedWrite = mockWriteWorkspaceState.mock.calls.find(
+        ([s]: [WorkspaceState]) => s.status === 'failed',
+      );
+      expect(failedWrite).toBeDefined();
     });
 
     it('throws error when workspace not found', async () => {
@@ -271,32 +258,10 @@ describe('closeWorkspace', () => {
       expect(mockDeleteWorkspaceState).toHaveBeenCalled();
     });
 
-    it('auto-syncs when diverged upstream and succeeds', async () => {
+    it('throws descriptive error when sync hits conflicts, stays active', async () => {
       const state = createWorkspaceState();
       mockReadWorkspaceState.mockReturnValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
-      mockGetCurrentBranch.mockReturnValue('some-branch');
-      // Pre-check: first call returns false (diverged), after sync returns true
-      mockCanFFMerge
-        .mockReturnValueOnce(false) // first repo pre-check fails
-        .mockReturnValue(true);     // all re-checks pass
-      mockSyncWorkspace.mockResolvedValue({ synced: ['myproject', 'public'], details: [] });
-      mockMergeFFOnly.mockReturnValue(true);
-
-      await closeWorkspace('feature-x', 'merge');
-
-      // Verify sync was called
-      expect(mockSyncWorkspace).toHaveBeenCalledWith('feature-x');
-      // Verify close completed
-      expect(mockDeleteWorkspaceState).toHaveBeenCalledWith('myproject-feature-x');
-    });
-
-    it('throws descriptive error when auto-sync hits conflicts, stays active', async () => {
-      const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
-      mockHasDirtyWorkingTree.mockReturnValue(false);
-      mockGetCurrentBranch.mockReturnValue('some-branch');
-      mockCanFFMerge.mockReturnValueOnce(false);
       mockSyncWorkspace.mockRejectedValue(
         new mockConflictError('Merge conflicts in public', 'public', ['file.ts'], ['myproject'], []),
       );
@@ -314,19 +279,18 @@ describe('closeWorkspace', () => {
       );
     });
 
-    it('throws error naming repo when sync succeeds but still cannot FF', async () => {
+    it('throws error naming repo when FF check fails after sync', async () => {
       const state = createWorkspaceState();
       mockReadWorkspaceState.mockReturnValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockGetCurrentBranch.mockReturnValue('some-branch');
       mockCanFFMerge
-        .mockReturnValueOnce(false)  // pre-check fails
-        .mockReturnValueOnce(true)   // re-check repo 1 passes
-        .mockReturnValueOnce(false); // re-check repo 2 fails
+        .mockReturnValueOnce(true)   // repo 1 passes
+        .mockReturnValueOnce(false); // repo 2 fails
       mockSyncWorkspace.mockResolvedValue({ synced: ['myproject', 'public'], details: [] });
 
       await expect(closeWorkspace('feature-x', 'merge')).rejects.toThrow(
-        "Still cannot fast-forward 'public' after sync. Resolve manually."
+        "Cannot fast-forward 'public' after sync. Source repo may have local commits not on origin."
       );
 
       // Workspace should NOT have been set to 'closing'
@@ -335,7 +299,7 @@ describe('closeWorkspace', () => {
       );
     });
 
-    it('dry-run skips pre-check', async () => {
+    it('dry-run skips sync and FF check', async () => {
       const state = createWorkspaceState();
       mockReadWorkspaceState.mockReturnValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
@@ -343,7 +307,7 @@ describe('closeWorkspace', () => {
 
       const result = await closeWorkspace('feature-x', 'merge', { dryRun: true });
 
-      // canFFMerge and getCurrentBranch should not have been called
+      // canFFMerge, getCurrentBranch, and syncWorkspace should not have been called
       expect(mockCanFFMerge).not.toHaveBeenCalled();
       expect(mockGetCurrentBranch).not.toHaveBeenCalled();
       expect(mockSyncWorkspace).not.toHaveBeenCalled();
@@ -357,7 +321,7 @@ describe('closeWorkspace', () => {
       });
     });
 
-    it('pre-check failure restores source repos to original branches', async () => {
+    it('FF check failure restores source repos to original branches', async () => {
       const state = createWorkspaceState();
       mockReadWorkspaceState.mockReturnValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
@@ -365,10 +329,8 @@ describe('closeWorkspace', () => {
         .mockReturnValueOnce('original-branch-1')
         .mockReturnValueOnce('original-branch-2');
       mockCanFFMerge
-        .mockReturnValueOnce(false)  // pre-check fails
-        .mockReturnValueOnce(true)   // re-check repo 1 passes
-        .mockReturnValueOnce(false); // re-check repo 2 fails
-      mockSyncWorkspace.mockResolvedValue({ synced: ['myproject', 'public'], details: [] });
+        .mockReturnValueOnce(true)   // repo 1 passes
+        .mockReturnValueOnce(false); // repo 2 fails
 
       await expect(closeWorkspace('feature-x', 'merge')).rejects.toThrow();
 
