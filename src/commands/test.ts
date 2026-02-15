@@ -1,11 +1,12 @@
 import type { GroveConfig } from '../config.js';
 import type { TestOptions, TestPlatform } from '../types.js';
 import { runTests } from '../testing/test-runner.js';
-import { printError } from '../output.js';
+import { printError, printTestResult, printTestFailures } from '../output.js';
 
-function parseTestArgs(args: string[]): { platform: TestPlatform | undefined; options: Omit<TestOptions, 'platform'> } {
+function parseTestArgs(args: string[]): { platform: TestPlatform | undefined; options: Omit<TestOptions, 'platform'>; json?: boolean } {
   const platform = args[0] as TestPlatform | undefined;
   const options: Omit<TestOptions, 'platform'> = {};
+  let json = false;
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -30,14 +31,16 @@ function parseTestArgs(args: string[]): { platform: TestPlatform | undefined; op
       options.timeout = parseInt(args[++i], 10);
     } else if (arg === '--verbose') {
       options.verbose = true;
+    } else if (arg === '--json') {
+      json = true;
     }
   }
 
-  return { platform, options };
+  return { platform, options, json };
 }
 
 export async function testCommand(config: GroveConfig, args: string[]): Promise<void> {
-  const { platform, options } = parseTestArgs(args);
+  const { platform, options, json } = parseTestArgs(args);
 
   if (!platform || !['mobile', 'webapp', 'api'].includes(platform)) {
     printError('Usage: grove test <mobile|webapp|api> [options]');
@@ -49,9 +52,11 @@ export async function testCommand(config: GroveConfig, args: string[]): Promise<
     console.log('  --grep <pattern>   Test name filter (webapp, api)');
     console.log('  --use-dev          Use dev environment for API URL (api)');
     console.log('  --ai               Include AI tests (api)');
+    console.log('  --exclude-ai       Exclude AI tests (api)');
     console.log('  --no-ensure        Skip auto-ensure');
     console.log('  --timeout <ms>     Timeout in milliseconds');
     console.log('  --verbose          Verbose output');
+    console.log('  --json             Output raw JSON (for CI/scripting)');
     process.exit(1);
   }
 
@@ -70,7 +75,15 @@ export async function testCommand(config: GroveConfig, args: string[]): Promise<
   }
 
   const result = await runTests(config, { platform, ...options });
-  console.log(JSON.stringify(result, null, 2));
+
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    printTestResult(result);
+    if (result.failures && result.failures.length > 0) {
+      printTestFailures(result.failures);
+    }
+  }
 
   // Exit codes: 0=pass, 1=fail, 2=error, 3=timeout
   if (result.run.result === 'pass') {

@@ -1,6 +1,6 @@
 # Grove Workspace Management: State
 
-Last updated: 2026-02-13
+Last updated: 2026-02-14
 
 ## State Location
 
@@ -9,6 +9,10 @@ Last updated: 2026-02-13
 ```
 
 Workspace ID is `<project>-<branch>` where project is the parent repo directory name. Example: `acorn-feature-x`.
+
+**Collision constraint:** Two repos with the same directory name would produce the same workspace ID. This is acceptable — a single machine is unlikely to have two unrelated repos with the same directory name that both use Grove workspaces. If it ever happens, rename one directory.
+
+**Lookup:** Commands that take `<branch>` find the workspace by scanning state files for a matching branch. If multiple workspaces use the same branch name (unlikely but possible across different projects), the user must specify `--from <path>` to disambiguate or use the full workspace ID.
 
 ## State Schema
 
@@ -95,7 +99,7 @@ const WorkspaceRepoState = z.object({
 });
 
 const SyncState = z.object({
-  startedAt: z.string(),
+  startedAt: z.string().datetime(),
   repos: z.record(SyncStatus),
 }).nullable();
 
@@ -104,8 +108,8 @@ const WorkspaceState = z.object({
   id: z.string(),
   status: z.enum(['creating', 'active', 'closing', 'failed']),
   branch: z.string(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
   root: z.string(),
   source: z.string(),
   repos: z.array(WorkspaceRepoState),

@@ -128,6 +128,16 @@ const UtilitiesSchema = z.object({
   reloadTargets: z.array(z.string()).optional(),
 });
 
+// Workspace schemas
+const WorkspaceRepoSchema = z.object({
+  path: z.string().min(1),
+  remote: z.string().optional(),
+});
+
+const WorkspaceConfigSchema = z.object({
+  repos: z.array(WorkspaceRepoSchema).min(1),
+});
+
 // Main config schema
 const GroveConfigSchema = z.object({
   project: z.object({
@@ -146,6 +156,7 @@ const GroveConfigSchema = z.object({
   testing: TestingSchema.optional(),
   simulator: SimulatorSchema.optional(),
   utilities: UtilitiesSchema.optional(),
+  workspace: WorkspaceConfigSchema.optional(),
 });
 
 export type BootstrapCheck = z.infer<typeof BootstrapCheckSchema>;
@@ -163,6 +174,8 @@ export type Observability = z.infer<typeof ObservabilitySchema>;
 export type Testing = z.infer<typeof TestingSchema>;
 export type SimulatorConfig = z.infer<typeof SimulatorSchema>;
 export type ShellTarget = z.infer<typeof ShellTargetSchema>;
+export type WorkspaceRepo = z.infer<typeof WorkspaceRepoSchema>;
+export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type Utilities = z.infer<typeof UtilitiesSchema>;
 export type GroveConfig = z.infer<typeof GroveConfigSchema> & {
   portBlockSize: number;
@@ -201,4 +214,27 @@ export function loadConfig(rootDir?: string): GroveConfig {
     portBlockSize,
     repoRoot,
   };
+}
+
+// Partial schema for workspace-only parsing (doesn't require project/helm/services)
+const PartialGroveConfigSchema = z.object({
+  workspace: WorkspaceConfigSchema.optional(),
+}).passthrough();
+
+/**
+ * Load workspace config from .grove.yaml. Returns null if file is missing
+ * or has no workspace section. Does NOT throw for missing config.
+ */
+export function loadWorkspaceConfig(repoRoot: string): WorkspaceConfig | null {
+  const configPath = join(repoRoot, '.grove.yaml');
+  if (!existsSync(configPath)) return null;
+
+  try {
+    const raw = parse(readFileSync(configPath, 'utf-8'));
+    const parsed = PartialGroveConfigSchema.safeParse(raw);
+    if (!parsed.success) return null;
+    return parsed.data.workspace ?? null;
+  } catch {
+    return null;
+  }
 }

@@ -1,6 +1,6 @@
 # Grove Workspace Management: Operations
 
-Last updated: 2026-02-13
+Last updated: 2026-02-14
 
 ## CLI Commands
 
@@ -13,7 +13,7 @@ grove workspace close <branch> --merge
 grove workspace close <branch> --discard
 ```
 
-All commands accept `--json` for machine-readable output.
+All commands accept `--json` for machine-readable output. The `--json` flag is parsed once in `src/commands/workspace.ts` (the command router) and passed as a context object to all subcommand handlers. When `--json` is set, handlers call `jsonSuccess()`/`jsonError()` instead of `printSuccess()`/`printError()`, and exit codes are set accordingly.
 
 ---
 
@@ -24,25 +24,37 @@ Create an isolated workspace with coordinated feature branches.
 **Detection logic:**
 1. If `--from <path>` provided, use that as source repo
 2. Otherwise, detect repo from cwd (`git rev-parse --show-toplevel`)
-3. Look for `.grove.yaml` with `workspace.repos` → grouped
-4. No workspace config → simple (single-repo)
+3. Load workspace config via `loadWorkspaceConfig()` (does NOT use `loadConfig()`)
+4. Has `workspace.repos` → grouped. Otherwise → simple (single-repo)
 
-**Grouped workspace flow:**
-1. Read `.grove.yaml`, validate workspace config
-2. Validate all child repos exist at declared paths and are git repos
-3. Determine parent branch for each repo (`git -C <source> branch --show-current`)
-4. Write state file with `status: "creating"`
-5. Create parent worktree: `git -C <source> worktree add -b <branch> ~/worktrees/<project>/<branch>`
-6. For each child repo:
-   - `git -C <source>/<path> worktree add -b <branch> ~/worktrees/<project>/<branch>/<path>`
-7. Update state to `status: "active"`
-8. Print workspace root path
+**Preflight checks (all run before any git mutations):**
+1. Validate all child repos exist at declared paths and are git repos
+2. Get current branch for every repo (`git -C <source> branch --show-current`)
+3. **Branch consistency check:** All repos must be on the same branch. Error with details if not:
+   ```
+   Error: Repos are on different branches. All repos must be on the same branch.
+     acorn: main
+     public: develop
+     cloud: main
+   ```
+4. Check `<branch>` doesn't already exist in ANY repo (`git -C <source> rev-parse --verify <branch>`). Error if it exists in any repo — avoids partial creates where some repos get `-b` and others fail.
+5. Check no existing workspace state for this ID (or handle failed state — see Error Recovery)
+6. Resolve worktree base path: `$GROVE_WORKTREE_DIR` or default `~/worktrees/`
+
+**Grouped workspace flow (runs only after all preflight checks pass):**
+1. Read config, run preflight checks (above)
+2. Write state file with `status: "creating"`
+3. Create parent worktree: `git -C <source> worktree add -b <branch> <base>/<project>/<branch>`
+4. For each child repo:
+   - `git -C <source>/<path> worktree add -b <branch> <base>/<project>/<branch>/<path>`
+5. Update state to `status: "active"`
+6. Print workspace root path
 
 **Simple workspace flow:**
 Same as above but `repos` has one entry (the current repo) and no nesting.
 
 **Rollback on failure:**
-If any step fails, remove all worktrees created so far, delete branches, set `status: "failed"`.
+If any step after preflight fails, remove all worktrees created so far, delete branches, set `status: "failed"`. Since preflight catches most issues, rollback should be rare.
 
 **Output:**
 ```json
@@ -125,7 +137,7 @@ For each repo, gather:
 
 ## `grove workspace sync <branch>`
 
-Merge upstream main into each repo's feature branch. Resumable — picks up where it left off.
+Merge upstream changes into each repo's feature branch. Resumable — picks up where it left off.
 
 **Flow:**
 1. Load workspace state
@@ -138,8 +150,13 @@ Merge upstream main into each repo's feature branch. Resumable — picks up wher
 4. If all synced: clear sync state, update timestamp
 5. If conflicted: exit with error, structured conflict data
 
+**Why parent first:** Parent repo is the coordination point — its config, plans, and docs may reference child repos. Syncing it first ensures the parent's view of the world is current before syncing children. In practice, repos rarely have cross-repo merge conflicts, so order matters less than having a consistent rule.
+
 **Resuming after conflict resolution:**
-User/Claude resolves conflicts in the workspace, commits. Re-runs `grove workspace sync <branch>`. The tool sees the previously-conflicted repo no longer has conflicts (no merge in progress), marks it `synced`, continues to next `pending` repo.
+User/Claude resolves conflicts in the workspace, commits. Re-runs `grove workspace sync <branch>`. The tool checks:
+1. Is there a merge in progress? (`MERGE_HEAD` exists) → still conflicted, report
+2. No merge in progress but uncommitted changes? → warn user to commit first
+3. No merge, clean tree → mark `synced`, continue to next `pending` repo
 
 **Output (conflict):**
 ```json
@@ -179,14 +196,16 @@ Merge all feature branches back to their parent branches and clean up.
 
 ## `grove workspace close <branch> --discard`
 
-Delete all branches and worktrees without merging.
+Delete all branches and worktrees without merging. Must succeed regardless of repo state — dirty trees, active merges, detached HEAD, missing worktrees. Each repo cleanup is best-effort and errors are collected, not fatal.
 
 **Flow:**
 1. Set `status: "closing"`
-2. For each repo:
-   - `git -C <source> worktree remove --force <worktree-path>`
-   - `git -C <source> branch -D <branch>`
+2. For each repo (errors collected, not fatal):
+   - `git -C <worktree> merge --abort` (if merge in progress, ignore errors)
+   - `git -C <source> worktree remove --force <worktree-path>` (ignore if already gone)
+   - `git -C <source> branch -D <branch>` (ignore if already deleted)
 3. Delete state file
+4. Report any collected errors as warnings (cleanup succeeded overall)
 
 ---
 

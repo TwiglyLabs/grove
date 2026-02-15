@@ -17,6 +17,7 @@ import { writeFileSync } from 'fs';
 import { reloadCommand } from './reload.js';
 import { readState } from '../state.js';
 import { printError } from '../output.js';
+import { ExitError, mockProcessExit } from '../testing/test-helpers.js';
 import type { GroveConfig } from '../config.js';
 
 const mockConfig = {
@@ -40,19 +41,10 @@ const mockState = {
   lastEnsure: new Date().toISOString(),
 };
 
-// Helper: mock process.exit to throw so execution stops
-class ExitError extends Error {
-  code: number;
-  constructor(code: number) {
-    super(`process.exit(${code})`);
-    this.code = code;
-  }
-}
-
 describe('reloadCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(process, 'exit').mockImplementation((code) => { throw new ExitError(code as number); });
+    mockProcessExit();
   });
 
   it('prints error when no service specified', async () => {
@@ -89,7 +81,7 @@ describe('reloadCommand', () => {
   it('accepts all configured reload targets', async () => {
     for (const target of ['api', 'auth', 'worker']) {
       vi.clearAllMocks();
-      vi.spyOn(process, 'exit').mockImplementation((code) => { throw new ExitError(code as number); });
+      mockProcessExit();
       vi.mocked(readState).mockReturnValue(mockState);
 
       await reloadCommand(mockConfig, target);

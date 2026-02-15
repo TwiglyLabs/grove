@@ -1,11 +1,22 @@
 import chalk from 'chalk';
-import type { NamespaceInfo, FailureDetail, TestResult } from './types.js';
+import type { FailureDetail, TestResult } from './types.js';
+
+export function jsonSuccess<T>(data: T): void {
+  console.log(JSON.stringify({ ok: true, data }));
+}
+
+export function jsonError(message: string, data?: unknown): void {
+  process.exitCode = 1;
+  const envelope: { ok: false; error: string; data?: unknown } = { ok: false, error: message };
+  if (data !== undefined) envelope.data = data;
+  console.log(JSON.stringify(envelope));
+}
 
 export function printBanner(projectName: string): void {
   console.log();
   console.log(chalk.cyan.bold(`╔═══════════════════════════════════════╗`));
   console.log(chalk.cyan.bold(`║  Grove - ${projectName.padEnd(27)} ║`));
-  console.log(chalk.cyan.bold(`╔═══════════════════════════════════════╗`));
+  console.log(chalk.cyan.bold(`╚═══════════════════════════════════════╝`));
   console.log();
 }
 
@@ -31,11 +42,6 @@ export function printSection(title: string): void {
   console.log();
 }
 
-export function printKeyValue(key: string, value: string, indent: number = 0): void {
-  const spaces = ' '.repeat(indent);
-  console.log(`${spaces}${chalk.dim(key + ':')} ${value}`);
-}
-
 export function printUrlTable(urls: Record<string, string>): void {
   console.log();
   console.log(chalk.bold('Service URLs:'));
@@ -52,22 +58,6 @@ export function printUrlTable(urls: Record<string, string>): void {
 }
 
 /**
- * Print a progress step with status icon.
- */
-export function printProgress(
-  step: string,
-  status: 'pending' | 'done' | 'error'
-): void {
-  const icon =
-    status === 'done'
-      ? chalk.green('✓')
-      : status === 'error'
-        ? chalk.red('✗')
-        : chalk.yellow('○');
-  console.log(`  ${icon} ${step}`);
-}
-
-/**
  * Format a date as a human-readable age.
  */
 export function formatAge(date: Date): string {
@@ -80,54 +70,6 @@ export function formatAge(date: Date): string {
   if (diffDays > 0) return `${diffDays}d`;
   if (diffHours > 0) return `${diffHours}h`;
   return `${diffMinutes}m`;
-}
-
-/**
- * Print namespace status table.
- */
-export function printNamespaceStatus(namespaces: NamespaceInfo[]): void {
-  console.log('');
-  console.log(
-    chalk.bold('NAMESPACE                  BRANCH              AGE    PORT-FORWARDS')
-  );
-  console.log('');
-
-  for (const ns of namespaces) {
-    const age = formatAge(ns.createdAt);
-    const portStatus = ns.hasActivePortForwards
-      ? chalk.green('✓ active')
-      : chalk.dim('✗ inactive');
-
-    console.log(
-      `${ns.name.padEnd(26)} ${ns.branch.padEnd(19)} ${age.padEnd(6)} ${portStatus}`
-    );
-  }
-
-  console.log('');
-}
-
-/**
- * Print prune results.
- */
-export function printPruneResult(deleted: string[], kept: string[]): void {
-  console.log('');
-  console.log(chalk.bold('Pruning namespaces...'));
-  console.log(chalk.dim('  E2E namespaces: > 1 hour old'));
-  console.log(chalk.dim('  Dev namespaces: > 7 days old'));
-  console.log('');
-
-  for (const ns of deleted) {
-    console.log(`  ${chalk.green('✓')} Deleted ${ns}`);
-  }
-
-  if (deleted.length === 0) {
-    console.log(chalk.dim('  No namespaces to prune'));
-  }
-
-  console.log('');
-  if (kept.length > 0) {
-    console.log(`Kept ${kept.length} namespace(s)`);
-  }
 }
 
 export interface DashboardData {

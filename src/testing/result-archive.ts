@@ -53,11 +53,7 @@ export function pruneHistory(historyDir: string, limit: number): void {
       try {
         const entryPath = path.join(historyDir, entry);
         if (fs.existsSync(entryPath)) {
-          const files = fs.readdirSync(entryPath);
-          for (const file of files) {
-            fs.unlinkSync(path.join(entryPath, file));
-          }
-          fs.rmdirSync(entryPath);
+          fs.rmSync(entryPath, { recursive: true, force: true });
         }
       } catch {
         // Ignore deletion errors

@@ -34,7 +34,6 @@ function resolveSuitePaths(config: GroveConfig, suite?: string, flow?: string[])
   if (suite) {
     // Check for file named <suite>.yaml or directory named <suite>
     const yamlPath = path.join(maestroBase, `flows/${suite}.yaml`);
-    const dirPath = path.join(maestroBase, `flows/${suite}`);
     // Use the suite name as-is; maestro will resolve it
     return [yamlPath];
   }
@@ -211,6 +210,10 @@ function buildVitestCommand(
 
   if (options.ai) {
     env.INCLUDE_AI_TESTS = 'true';
+  }
+
+  if (options.excludeAi) {
+    env.EXCLUDE_AI_TESTS = 'true';
   }
 
   if (options.useDev && state) {

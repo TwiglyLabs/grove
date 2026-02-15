@@ -1,6 +1,6 @@
 # Grove Workspace Management: Overview
 
-Last updated: 2026-02-13
+Last updated: 2026-02-14
 
 ## Problem Statement
 
@@ -23,7 +23,11 @@ Extend Grove's CLI with a `workspace` subcommand that orchestrates git worktrees
 - **Simple** — Single repo, no config needed. Replaces current Emacs-managed worktrees.
 - **Grouped** — Parent repo + children declared in `.grove.yaml`. All repos share one branch name.
 
+**Branch consistency** — All repos in a grouped workspace must be on the same branch (e.g., all on `main`, or all on `develop`). This is the parent branch that feature branches are created from and merged back into. The tool errors if repos disagree.
+
 **Atomic lifecycle** — All repos in a workspace are created, synced, and closed together. No partial merges.
+
+**Preflight before mutate** — All preconditions (branch existence, repo validity, branch consistency) are checked before any git mutations. If preflight fails, nothing is touched.
 
 **Config-driven** — `.grove.yaml` in the parent repo declares child repos. The tool reads this to know what to bundle.
 
@@ -33,6 +37,8 @@ Extend Grove's CLI with a `workspace` subcommand that orchestrates git worktrees
 grove workspace create feature-x
          │
          ├── Read .grove.yaml → discover repos
+         ├── PREFLIGHT: validate repos, check branch consistency,
+         │              verify branch name is available in all repos
          ├── git worktree add (parent)
          ├── git worktree add (child 1, nested inside parent)
          ├── git worktree add (child 2, nested inside parent)
@@ -40,7 +46,7 @@ grove workspace create feature-x
 
 grove workspace sync feature-x
          │
-         ├── For each repo: git fetch + git merge origin/main
+         ├── For each repo: git fetch + merge origin/<parentBranch>
          ├── On conflict: stop, report, user/Claude resolves
          └── Resumable — picks up from last conflicted repo
 
@@ -56,10 +62,13 @@ grove workspace close feature-x --merge
 
 1. **Physical layout mirrors source** — Grouped workspace nests child worktrees where child repos normally live. All CLAUDE.md files and relative paths work as-is.
 2. **One branch name per workspace** — Simple mental model. `feature-x` everywhere.
-3. **Sync before close** — Conflicts surface in the workspace where Claude has full context, not during teardown.
-4. **CLI owns all state** — Emacs becomes a thin UI layer that shells out to `grove --json`.
-5. **State in `~/.grove/workspaces/`** — Global directory, not per-repo, since workspaces span repos.
-6. **Simple state machine** — creating/active/closing/failed. No reconciliation complexity.
+3. **Preflight all checks** — Validate everything before touching git. Branch existence, repo validity, branch consistency — all checked upfront so failures never leave partial state.
+4. **Work from whatever branch repos are on** — Parent branch is detected per-repo (could be `main`, `develop`, or a long-lived feature branch). All repos must agree — error if they don't.
+5. **Sync before close** — Conflicts surface in the workspace where Claude has full context, not during teardown.
+6. **CLI owns all state** — Emacs becomes a thin UI layer that shells out to `grove --json`.
+7. **State in `~/.grove/workspaces/`** — Global directory, not per-repo, since workspaces span repos.
+8. **Simple state machine** — creating/active/closing/failed. No reconciliation complexity.
+9. **Worktree base path** — Default `~/worktrees/`. Configurable via `GROVE_WORKTREE_DIR` env var.
 
 ### What's NOT in Scope
 

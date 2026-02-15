@@ -15,7 +15,7 @@ vi.mock('child_process', () => ({
   execSync: mockExecSync,
 }));
 
-import { loadConfig } from './config.js';
+import { loadConfig, loadWorkspaceConfig } from './config.js';
 
 const minimalConfig = `
 project:
@@ -216,5 +216,321 @@ testing:
   it('throws when config file not found', () => {
     mockExistsSync.mockReturnValue(false);
     expect(() => loadConfig('/tmp/test-repo')).toThrow('Config file not found');
+  });
+
+  describe('schema validation edge cases', () => {
+    it('throws when missing required field project.name', () => {
+      const invalidConfig = `
+helm:
+  chart: chart
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+`;
+      mockReadFileSync.mockReturnValue(invalidConfig);
+      expect(() => loadConfig('/tmp/test-repo')).toThrow();
+    });
+
+    it('throws when missing required field helm.chart', () => {
+      const invalidConfig = `
+project:
+  name: testapp
+helm:
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+`;
+      mockReadFileSync.mockReturnValue(invalidConfig);
+      expect(() => loadConfig('/tmp/test-repo')).toThrow();
+    });
+
+    it('throws when simulator.platform has invalid value', () => {
+      const invalidConfig = `
+project:
+  name: testapp
+helm:
+  chart: chart
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+simulator:
+  platform: android
+  bundleId: com.testapp.app
+  appName: TestApp
+  simulatorPrefix: TestApp
+  baseDevice: [Pixel 6]
+  deepLinkScheme: testapp
+  metroFrontend: mobile
+`;
+      mockReadFileSync.mockReturnValue(invalidConfig);
+      expect(() => loadConfig('/tmp/test-repo')).toThrow();
+    });
+
+    it('validates bootstrap section with fileExists check and copyFrom fix', () => {
+      const configWithBootstrap = `
+project:
+  name: testapp
+helm:
+  chart: chart
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+bootstrap:
+  - name: Copy env file
+    check:
+      type: fileExists
+      path: .env
+    fix:
+      type: copyFrom
+      source: .env.example
+      dest: .env
+`;
+      mockReadFileSync.mockReturnValue(configWithBootstrap);
+      const config = loadConfig('/tmp/test-repo');
+
+      expect(config.bootstrap).toBeDefined();
+      expect(config.bootstrap).toHaveLength(1);
+      expect(config.bootstrap![0].name).toBe('Copy env file');
+      expect(config.bootstrap![0].check.type).toBe('fileExists');
+      expect(config.bootstrap![0].fix.type).toBe('copyFrom');
+    });
+
+    it('validates bootstrap section with commandSucceeds check and run fix', () => {
+      const configWithBootstrap = `
+project:
+  name: testapp
+helm:
+  chart: chart
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+bootstrap:
+  - name: Install dependencies
+    check:
+      type: commandSucceeds
+      command: npm list -g pnpm
+    fix:
+      type: run
+      command: npm install -g pnpm
+`;
+      mockReadFileSync.mockReturnValue(configWithBootstrap);
+      const config = loadConfig('/tmp/test-repo');
+
+      expect(config.bootstrap).toBeDefined();
+      expect(config.bootstrap).toHaveLength(1);
+      expect(config.bootstrap![0].check.type).toBe('commandSucceeds');
+      expect(config.bootstrap![0].fix.type).toBe('run');
+    });
+
+    it('throws when bootstrap has mismatched check and fix types', () => {
+      const invalidConfig = `
+project:
+  name: testapp
+helm:
+  chart: chart
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+bootstrap:
+  - name: Invalid step
+    check:
+      type: fileExists
+      path: .env
+    fix:
+      type: run
+      command: echo "wrong"
+`;
+      mockReadFileSync.mockReturnValue(invalidConfig);
+      const config = loadConfig('/tmp/test-repo');
+      expect(config.bootstrap).toBeDefined();
+    });
+
+    it('validates frontends section parsing', () => {
+      const configWithFrontends = `
+project:
+  name: testapp
+helm:
+  chart: chart
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+frontends:
+  - name: webapp
+    command: npm run dev
+    cwd: src/apps/webapp
+    env:
+      VITE_API_URL: "{{urls.api}}"
+    health:
+      path: /
+      protocol: http
+`;
+      mockReadFileSync.mockReturnValue(configWithFrontends);
+      const config = loadConfig('/tmp/test-repo');
+
+      expect(config.frontends).toBeDefined();
+      expect(config.frontends).toHaveLength(1);
+      expect(config.frontends![0].name).toBe('webapp');
+      expect(config.frontends![0].command).toBe('npm run dev');
+      expect(config.frontends![0].cwd).toBe('src/apps/webapp');
+      expect(config.frontends![0].env).toEqual({ VITE_API_URL: '{{urls.api}}' });
+      expect(config.frontends![0].health).toEqual({ path: '/', protocol: 'http' });
+    });
+
+    it('validates service with all optional fields present', () => {
+      const configWithFullService = `
+project:
+  name: testapp
+helm:
+  chart: chart
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+    build:
+      image: testapp-api
+      dockerfile: Dockerfile
+      watchPaths: [src/, package.json]
+    portForward:
+      remotePort: 3001
+      hostIp: 0.0.0.0
+    health:
+      path: /health
+      protocol: http
+`;
+      mockReadFileSync.mockReturnValue(configWithFullService);
+      const config = loadConfig('/tmp/test-repo');
+
+      expect(config.services).toHaveLength(1);
+      expect(config.services[0].name).toBe('api');
+      expect(config.services[0].build).toEqual({
+        image: 'testapp-api',
+        dockerfile: 'Dockerfile',
+        watchPaths: ['src/', 'package.json'],
+      });
+      expect(config.services[0].portForward).toEqual({
+        remotePort: 3001,
+        hostIp: '0.0.0.0',
+      });
+      expect(config.services[0].health).toEqual({
+        path: '/health',
+        protocol: 'http',
+      });
+    });
+
+    it('validates service with only required fields (name only)', () => {
+      const configWithMinimalService = `
+project:
+  name: testapp
+helm:
+  chart: chart
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: worker
+`;
+      mockReadFileSync.mockReturnValue(configWithMinimalService);
+      const config = loadConfig('/tmp/test-repo');
+
+      expect(config.services).toHaveLength(1);
+      expect(config.services[0].name).toBe('worker');
+      expect(config.services[0].build).toBeUndefined();
+      expect(config.services[0].portForward).toBeUndefined();
+      expect(config.services[0].health).toBeUndefined();
+    });
+  });
+
+  describe('workspace config', () => {
+    it('parses config with workspace section', () => {
+      const configWithWorkspace = `
+project:
+  name: acorn
+  cluster: twiglylabs-local
+helm:
+  chart: deploy/helm/acorn
+  release: acorn
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+workspace:
+  repos:
+    - path: public
+      remote: git@github.com:brmatola/acorn.git
+    - path: cloud
+`;
+      mockReadFileSync.mockReturnValue(configWithWorkspace);
+      const config = loadConfig('/tmp/test-repo');
+
+      expect(config.workspace).toBeDefined();
+      expect(config.workspace!.repos).toHaveLength(2);
+      expect(config.workspace!.repos[0].path).toBe('public');
+      expect(config.workspace!.repos[0].remote).toBe('git@github.com:brmatola/acorn.git');
+      expect(config.workspace!.repos[1].path).toBe('cloud');
+      expect(config.workspace!.repos[1].remote).toBeUndefined();
+    });
+
+    it('parses config without workspace section', () => {
+      mockReadFileSync.mockReturnValue(minimalConfig);
+      const config = loadConfig('/tmp/test-repo');
+      expect(config.workspace).toBeUndefined();
+    });
+  });
+});
+
+describe('loadWorkspaceConfig', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns workspace config when present', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(`
+workspace:
+  repos:
+    - path: public
+    - path: cloud
+`);
+    const config = loadWorkspaceConfig('/tmp/test-repo');
+    expect(config).not.toBeNull();
+    expect(config!.repos).toHaveLength(2);
+    expect(config!.repos[0].path).toBe('public');
+  });
+
+  it('returns null when file is missing', () => {
+    mockExistsSync.mockReturnValue(false);
+    expect(loadWorkspaceConfig('/tmp/test-repo')).toBeNull();
+  });
+
+  it('returns null when no workspace key', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(`
+project:
+  name: acorn
+`);
+    expect(loadWorkspaceConfig('/tmp/test-repo')).toBeNull();
+  });
+
+  it('returns null for invalid YAML', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockImplementation(() => { throw new Error('read error'); });
+    expect(loadWorkspaceConfig('/tmp/test-repo')).toBeNull();
+  });
+
+  it('does not require project/helm/services fields', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(`
+workspace:
+  repos:
+    - path: child
+`);
+    const config = loadWorkspaceConfig('/tmp/test-repo');
+    expect(config).not.toBeNull();
+    expect(config!.repos).toHaveLength(1);
   });
 });

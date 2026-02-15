@@ -60,6 +60,22 @@ export function parseJunitXml(xmlContent: string | undefined): ParseResult {
 }
 
 /**
+ * Recursively collect all specs from nested Playwright suites.
+ */
+function collectSpecs(suites: any[]): any[] {
+  const specs: any[] = [];
+  for (const suite of suites) {
+    if (suite.specs) {
+      specs.push(...suite.specs);
+    }
+    if (suite.suites) {
+      specs.push(...collectSpecs(suite.suites));
+    }
+  }
+  return specs;
+}
+
+/**
  * Parse Playwright JSON test results.
  */
 export function parsePlaywrightJson(jsonContent: string): ParseResult {
@@ -68,26 +84,32 @@ export function parsePlaywrightJson(jsonContent: string): ParseResult {
     let total = 0;
     let passed = 0;
     let failed = 0;
+    let skipped = 0;
     const failures: FailureDetail[] = [];
 
-    if (data.suites) {
-      for (const suite of data.suites) {
-        if (suite.specs) {
-          for (const spec of suite.specs) {
-            total++;
-            if (spec.ok) {
-              passed++;
-            } else {
-              failed++;
-              const message = spec.tests?.[0]?.results?.[0]?.error?.message || 'Test failed';
-              failures.push({ test: spec.title, message });
-            }
-          }
-        }
+    const allSpecs = collectSpecs(data.suites || []);
+
+    for (const spec of allSpecs) {
+      total++;
+
+      // Check if ALL test entries in the spec are skipped
+      const isSkipped = spec.tests?.length > 0 && spec.tests.every((test: any) => {
+        const results = test.results || [];
+        return results.length > 0 && results.every((r: any) => r.status === 'skipped');
+      });
+
+      if (isSkipped) {
+        skipped++;
+      } else if (spec.ok) {
+        passed++;
+      } else {
+        failed++;
+        const message = spec.tests?.[0]?.results?.[0]?.error?.message || 'Test failed';
+        failures.push({ test: spec.title, message });
       }
     }
 
-    return { total, passed, failed, skipped: 0, failures };
+    return { total, passed, failed, skipped, failures };
   } catch {
     return { total: 0, passed: 0, failed: 0, skipped: 0, failures: [] };
   }

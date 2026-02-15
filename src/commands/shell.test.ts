@@ -18,6 +18,7 @@ import { spawn, execSync } from 'child_process';
 import { shellCommand } from './shell.js';
 import { readState } from '../state.js';
 import { printError } from '../output.js';
+import { ExitError, mockProcessExit } from '../testing/test-helpers.js';
 import type { GroveConfig } from '../config.js';
 
 const mockConfig = {
@@ -45,19 +46,10 @@ const mockState = {
   lastEnsure: new Date().toISOString(),
 };
 
-// Helper: mock process.exit to throw so execution stops (like real process.exit)
-class ExitError extends Error {
-  code: number;
-  constructor(code: number) {
-    super(`process.exit(${code})`);
-    this.code = code;
-  }
-}
-
 describe('shellCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(process, 'exit').mockImplementation((code) => { throw new ExitError(code as number); });
+    mockProcessExit();
   });
 
   it('prints error when no service specified', async () => {

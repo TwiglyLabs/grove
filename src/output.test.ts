@@ -1,15 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  printProgress,
   formatAge,
-  printNamespaceStatus,
+  jsonSuccess,
+  jsonError,
   printDashboard,
   printTestResult,
   printTestFailures,
-  printPruneResult,
 } from './output.js';
 import type { DashboardData } from './output.js';
-import type { NamespaceInfo, TestResult, FailureDetail } from './types.js';
+import type { TestResult, FailureDetail } from './types.js';
 
 describe('output', () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;
@@ -17,6 +16,40 @@ describe('output', () => {
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  describe('jsonSuccess', () => {
+    it('outputs success envelope', () => {
+      jsonSuccess({ id: 'test', value: 42 });
+      const output = consoleSpy.mock.calls[0][0];
+      const parsed = JSON.parse(output);
+      expect(parsed).toEqual({ ok: true, data: { id: 'test', value: 42 } });
+    });
+  });
+
+  describe('jsonError', () => {
+    it('outputs error envelope and sets exit code', () => {
+      const originalExitCode = process.exitCode;
+      jsonError('something failed');
+      const lastCall = consoleSpy.mock.calls[consoleSpy.mock.calls.length - 1][0];
+      const parsed = JSON.parse(lastCall);
+      expect(parsed).toEqual({ ok: false, error: 'something failed' });
+      expect(process.exitCode).toBe(1);
+      process.exitCode = originalExitCode;
+    });
+
+    it('includes data when provided', () => {
+      const originalExitCode = process.exitCode;
+      jsonError('conflicts', { files: ['a.ts', 'b.ts'] });
+      const lastCall = consoleSpy.mock.calls[consoleSpy.mock.calls.length - 1][0];
+      const parsed = JSON.parse(lastCall);
+      expect(parsed).toEqual({
+        ok: false,
+        error: 'conflicts',
+        data: { files: ['a.ts', 'b.ts'] },
+      });
+      process.exitCode = originalExitCode;
+    });
   });
 
   describe('formatAge', () => {
@@ -37,69 +70,6 @@ describe('output', () => {
 
     it('returns 0m for now', () => {
       expect(formatAge(new Date())).toBe('0m');
-    });
-  });
-
-  describe('printProgress', () => {
-    it('prints done status', () => {
-      printProgress('Step 1', 'done');
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Step 1'));
-    });
-
-    it('prints error status', () => {
-      printProgress('Step 2', 'error');
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Step 2'));
-    });
-
-    it('prints pending status', () => {
-      printProgress('Step 3', 'pending');
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Step 3'));
-    });
-  });
-
-  describe('printNamespaceStatus', () => {
-    it('prints namespace table', () => {
-      const namespaces: NamespaceInfo[] = [
-        {
-          name: 'dev-main',
-          branch: 'main',
-          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-          type: 'dev',
-          hasActivePortForwards: true,
-        },
-        {
-          name: 'dev-feat--auth',
-          branch: 'feat/auth',
-          createdAt: new Date(Date.now() - 30 * 60 * 1000),
-          type: 'dev',
-          hasActivePortForwards: false,
-        },
-      ];
-
-      printNamespaceStatus(namespaces);
-
-      const allOutput = consoleSpy.mock.calls.map(c => c[0]).join('\n');
-      expect(allOutput).toContain('NAMESPACE');
-      expect(allOutput).toContain('dev-main');
-      expect(allOutput).toContain('dev-feat--auth');
-    });
-  });
-
-  describe('printPruneResult', () => {
-    it('prints deleted namespaces', () => {
-      printPruneResult(['ns-old-1', 'ns-old-2'], ['ns-keep-1']);
-
-      const allOutput = consoleSpy.mock.calls.map(c => c[0]).join('\n');
-      expect(allOutput).toContain('ns-old-1');
-      expect(allOutput).toContain('ns-old-2');
-      expect(allOutput).toContain('Kept 1 namespace(s)');
-    });
-
-    it('prints message when nothing to prune', () => {
-      printPruneResult([], ['ns-keep-1']);
-
-      const allOutput = consoleSpy.mock.calls.map(c => c[0]).join('\n');
-      expect(allOutput).toContain('No namespaces to prune');
     });
   });
 

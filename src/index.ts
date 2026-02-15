@@ -11,6 +11,8 @@ import { logsCommand } from './commands/logs.js';
 import { testCommand } from './commands/test.js';
 import { shellCommand } from './commands/shell.js';
 import { reloadCommand } from './commands/reload.js';
+import { workspaceCommand } from './commands/workspace.js';
+import { repoCommand } from './commands/repo.js';
 import { printError } from './output.js';
 
 function printUsage(): void {
@@ -28,6 +30,10 @@ Usage:
   grove test <mobile|webapp|api> [opts]    Run tests
   grove shell <service>                    Open shell in a service pod
   grove reload <service>                   Trigger service reload
+  grove repo <subcommand>                  Manage repo registry (add, remove, list)
+                                           Run 'grove repo help' for details
+  grove workspace <subcommand>             Manage multi-repo workspaces (create, list, status, sync, close, switch)
+                                           Run 'grove workspace help' for details
 
 Options:
   --frontend <name>   Start specific frontend only (for 'up' command)
@@ -57,6 +63,27 @@ async function main(): Promise<void> {
   }
 
   const command = args[0];
+
+  // Repo and workspace commands don't need grove config
+  if (command === 'repo') {
+    try {
+      await repoCommand(args.slice(1));
+    } catch (error) {
+      printError(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (command === 'workspace') {
+    try {
+      await workspaceCommand(args.slice(1));
+    } catch (error) {
+      printError(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+    return;
+  }
 
   try {
     const config = loadConfig();

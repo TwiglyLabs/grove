@@ -1,6 +1,6 @@
 # Grove Workspace Management: Config
 
-Last updated: 2026-02-13
+Last updated: 2026-02-14
 
 ## `.grove.yaml` Extension
 
@@ -58,11 +58,31 @@ workspace: WorkspaceConfigSchema.optional(),
 
 When `grove workspace create` is run in a repo without a `workspace` section in `.grove.yaml` (or without `.grove.yaml` at all), it creates a simple single-repo workspace. No config file needed.
 
+### Config Loading Path
+
+The existing `loadConfig()` throws if `.grove.yaml` is missing — it's designed for K8s commands that require config. Workspace commands use a separate function:
+
+```typescript
+// New function — does NOT throw if file is missing
+function loadWorkspaceConfig(repoRoot: string): WorkspaceConfig | null {
+  const configPath = path.join(repoRoot, '.grove.yaml');
+  if (!fs.existsSync(configPath)) return null;
+
+  const raw = yaml.parse(fs.readFileSync(configPath, 'utf8'));
+  const parsed = PartialGroveConfigSchema.safeParse(raw);
+  if (!parsed.success) return null;
+
+  return parsed.data.workspace ?? null;
+}
+```
+
+This keeps the existing `loadConfig()` untouched. Workspace commands call `loadWorkspaceConfig()` instead.
+
 ### Detection
 
 ```typescript
-function isGroupedWorkspace(config: GroveConfig | null): boolean {
-  return config?.workspace?.repos != null && config.workspace.repos.length > 0;
+function isGroupedWorkspace(config: WorkspaceConfig | null): boolean {
+  return config?.repos != null && config.repos.length > 0;
 }
 ```
 

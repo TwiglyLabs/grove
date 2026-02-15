@@ -1,26 +1,28 @@
 # Grove Workspace Management: Implementation Tasks
 
-Last updated: 2026-02-13
+Last updated: 2026-02-14
 
 ## Overview
 
-Implemented in 4 phases. Each phase builds on the previous and can be tested independently. Grove already has the project structure, build tooling, and patterns to follow (zod schemas, state management, command routing).
+Implemented in 5 phases. Each phase builds on the previous and can be tested independently. Grove already has the project structure, build tooling, and patterns to follow (zod schemas, state management, command routing).
 
 ## File Map
 
 | File | Status | Description |
 |------|--------|-------------|
-| `src/config.ts` | MODIFY | Add WorkspaceConfigSchema to GroveConfigSchema |
-| `src/workspace/types.ts` | NEW | Workspace state types and zod schemas |
-| `src/workspace/state.ts` | NEW | Read/write/list workspace state in ~/.grove/workspaces/ |
-| `src/workspace/git.ts` | NEW | Git worktree operations (create, remove, status) |
-| `src/workspace/create.ts` | NEW | Create workspace command logic |
-| `src/workspace/sync.ts` | NEW | Sync workspace command logic |
-| `src/workspace/close.ts` | NEW | Close workspace command logic (merge + discard) |
-| `src/workspace/status.ts` | NEW | Status + list command logic |
-| `src/commands/workspace.ts` | NEW | Command router for `grove workspace <subcommand>` |
-| `src/index.ts` | MODIFY | Add workspace command to main router |
-| `src/output.ts` | MODIFY | Add JSON envelope helpers |
+| `src/config.ts` | DONE | Add WorkspaceConfigSchema, add `loadWorkspaceConfig()` |
+| `src/workspace/types.ts` | DONE | Workspace state types and zod schemas |
+| `src/workspace/state.ts` | DONE | Read/write/list workspace state (supports `GROVE_STATE_DIR`) |
+| `src/workspace/git.ts` | DONE | Git worktree operations (create, remove, status) |
+| `src/workspace/preflight.ts` | DONE | Preflight validation (branch consistency, existence checks) |
+| `src/workspace/create.ts` | DONE | Create workspace command logic |
+| `src/workspace/sync.ts` | DONE | Sync workspace command logic |
+| `src/workspace/close.ts` | DONE | Close workspace command logic (merge + discard) |
+| `src/workspace/status.ts` | DONE | Status + list command logic (with stale detection) |
+| `src/commands/workspace.ts` | DONE | Command router with comprehensive help system |
+| `src/index.ts` | DONE | Add workspace command to main router |
+| `src/output.ts` | DONE | Add JSON envelope helpers |
+| `test/e2e/workspace.e2e.test.ts` | DONE | End-to-end tests with real git repos |
 
 ---
 
@@ -28,170 +30,248 @@ Implemented in 4 phases. Each phase builds on the previous and can be tested ind
 
 **Goal:** Config parsing and state management work. No git operations yet.
 
-**Success Criteria:**
-- `.grove.yaml` with `workspace` section parses correctly
-- Workspace state files can be created, read, listed, deleted in `~/.grove/workspaces/`
-- JSON envelope output works
+**Status: COMPLETE**
 
 ### Task 1.1: Extend config schema
 
-- [ ] Add `WorkspaceRepoSchema` and `WorkspaceConfigSchema` to `src/config.ts`
-- [ ] Make workspace optional in `GroveConfigSchema`
-- [ ] `loadConfig` should not require `.grove.yaml` to exist for workspace commands (simple workspaces have no config)
-- [ ] Add `loadWorkspaceConfig()` that returns workspace config or null
+- [x] Add `WorkspaceRepoSchema` and `WorkspaceConfigSchema` to `src/config.ts`
+- [x] Make workspace optional in `GroveConfigSchema`
+- [x] Add `loadWorkspaceConfig(repoRoot: string): WorkspaceConfig | null` — separate from `loadConfig()`, does NOT throw if `.grove.yaml` is missing or has no workspace section
+- [x] Existing `loadConfig()` remains unchanged (still throws if config missing)
 
 ### Task 1.2: Create workspace types and state
 
-- [ ] Create `src/workspace/types.ts` with all zod schemas (WorkspaceState, SyncState, etc.)
-- [ ] Create `src/workspace/state.ts` with read/write/list/delete operations
-- [ ] State directory: `~/.grove/workspaces/`
-- [ ] Use `proper-lockfile` for concurrent access (same pattern as existing `state.ts`)
+- [x] Create `src/workspace/types.ts` with all zod schemas (WorkspaceState, SyncState, etc.)
+- [x] Use `z.string().datetime()` for timestamp fields (createdAt, updatedAt, startedAt)
+- [x] Create `src/workspace/state.ts` with read/write/list/delete operations
+- [x] State directory: `~/.grove/workspaces/` (configurable via `GROVE_STATE_DIR`)
+- [x] Use `proper-lockfile` for concurrent access (same pattern as existing `state.ts`)
 
 ### Task 1.3: Add JSON output helpers
 
-- [ ] Add `jsonSuccess(data)` and `jsonError(message, data?)` to `src/output.ts`
-- [ ] Non-zero exit code on error
+- [x] Add `jsonSuccess(data)` and `jsonError(message, data?)` to `src/output.ts`
+- [x] `jsonError` sets `process.exitCode = 1` (non-zero exit on error)
 
 ### Task 1.4: Tests for phase 1
 
-- [ ] Config parsing with and without workspace section
-- [ ] State CRUD operations
-- [ ] JSON output formatting
-
-**Exit criteria:** `npm test` passes, state files round-trip correctly.
+- [x] Config parsing with and without workspace section
+- [x] `loadWorkspaceConfig()` returns null when file missing
+- [x] `loadWorkspaceConfig()` returns null when no workspace key
+- [x] State CRUD operations
+- [x] JSON output formatting
+- [x] `GROVE_STATE_DIR` env var support
 
 ---
 
-## Phase 2: Create & List
+## Phase 2: Create (simple workspaces)
 
-**Goal:** Can create grouped and simple workspaces and list them.
+**Goal:** Can create and list simple (single-repo) workspaces.
 
-**Success Criteria:**
-- `grove workspace create feature-x` creates worktrees for all repos
-- Physical layout mirrors source structure
-- `grove workspace list` shows all workspaces
-- `grove workspace status feature-x` shows per-repo details
+**Status: COMPLETE**
 
 ### Task 2.1: Git worktree operations
 
-- [ ] Create `src/workspace/git.ts`
-- [ ] `createWorktree(source, branch, targetPath)` — wraps `git worktree add -b`
-- [ ] `removeWorktree(source, worktreePath)` — wraps `git worktree remove`
-- [ ] `deleteBranch(source, branch, force?)` — wraps `git branch -d/-D`
-- [ ] `getRepoStatus(worktreePath)` — dirty count, commit count ahead of parent
-- [ ] `getCurrentBranch(repoPath)` — get current branch name
-- [ ] `isGitRepo(path)` — check if path has .git
+- [x] Create `src/workspace/git.ts`
+- [x] `createWorktree(source, branch, targetPath)` — wraps `git worktree add -b`
+- [x] `removeWorktree(source, worktreePath, force?)` — wraps `git worktree remove`
+- [x] `deleteBranch(source, branch, force?)` — wraps `git branch -d/-D`
+- [x] `getRepoStatus(worktreePath, parentBranch)` — dirty count, commit count ahead of parent
+- [x] `getCurrentBranch(repoPath)` — get current branch name
+- [x] `isGitRepo(path)` — check if path has .git
+- [x] `branchExists(source, branch)` — check if branch name is taken
+- [x] `getWorktreeBasePath()` — returns `$GROVE_WORKTREE_DIR` or `~/worktrees/`
 
-### Task 2.2: Create command
+### Task 2.2: Preflight validation
 
-- [ ] Create `src/workspace/create.ts`
-- [ ] Detect grouped vs simple from config
-- [ ] Validate child repos exist and are git repos
-- [ ] Create parent worktree, then children nested inside
-- [ ] Write state file throughout (creating → active)
-- [ ] Rollback on failure (remove any created worktrees, set failed)
+- [x] Create `src/workspace/preflight.ts`
+- [x] `preflightCreate(sources, branch)` — runs all checks, returns errors or validated data
+- [x] Returns structured result: `{ ok: true, parentBranch, ... }` or `{ ok: false, errors: [...] }`
 
-### Task 2.3: List and status commands
+### Task 2.3: Create command (simple only)
 
-- [ ] Create `src/workspace/status.ts`
-- [ ] `list` reads all state files from `~/.grove/workspaces/`
-- [ ] `status` reads one state file + gathers git status per repo
-- [ ] Auto-detect workspace from cwd (walk up to find worktree root, match to state)
+- [x] Create `src/workspace/create.ts`
+- [x] Simple workspace: single repo, no config needed
+- [x] Run preflight checks before any mutations
+- [x] Create worktree, write state (creating → active)
+- [x] Rollback on post-preflight failure
 
-### Task 2.4: Command routing
+### Task 2.4: List and status commands
 
-- [ ] Create `src/commands/workspace.ts` — parse subcommand + flags
-- [ ] Wire into `src/index.ts` main switch
-- [ ] Support `--json` flag on all subcommands
-- [ ] Support `--from <path>` on create
+- [x] Create `src/workspace/status.ts`
+- [x] `list` reads all state files with stale workspace detection (`missing` flag)
+- [x] `status` reads one state file + gathers git status per repo
+- [x] Auto-detect workspace from cwd (proper path boundary matching)
 
-### Task 2.5: Tests for phase 2
+### Task 2.5: Command routing
 
-- [ ] Create command with mock git operations
-- [ ] Create rollback on failure
-- [ ] List with multiple workspaces
-- [ ] Status output structure
+- [x] Create `src/commands/workspace.ts` — parse subcommand + flags
+- [x] Parse `--json` flag once in router, pass as context to all handlers
+- [x] Wire into `src/index.ts` main switch
+- [x] Support `--from <path>` on create
+- [x] `switch` subcommand prints workspace root path
+- [x] `help` subcommand and `--help` per subcommand with agent-readable documentation
 
-**Exit criteria:** Can create a workspace, list it, see status. Manual verification with real repos.
+### Task 2.6: Tests for phase 2
 
----
-
-## Phase 3: Sync
-
-**Goal:** Can sync workspace with upstream and handle conflicts.
-
-**Success Criteria:**
-- `grove workspace sync feature-x` fetches and merges main into each repo
-- Conflicts stop the sync, report files, and are resumable
-- Re-running sync after conflict resolution continues
-
-### Task 3.1: Sync command
-
-- [ ] Create `src/workspace/sync.ts`
-- [ ] Initialize sync progress in state (all pending)
-- [ ] For each pending repo: fetch, merge
-- [ ] Detect conflicts (`git diff --name-only --diff-filter=U`)
-- [ ] On conflict: update state, exit with structured error
-- [ ] On resume: detect resolved conflicts (no merge in progress), mark synced, continue
-- [ ] On all synced: clear sync state
-
-### Task 3.2: Conflict detection helpers
-
-- [ ] `isMergeInProgress(worktreePath)` — check for `.git/MERGE_HEAD` or equivalent in worktree
-- [ ] `getConflictedFiles(worktreePath)` — list files with conflicts
-- [ ] `hasDirtyWorkingTree(worktreePath)` — uncommitted changes check
-
-### Task 3.3: Tests for phase 3
-
-- [ ] Sync with no upstream changes (all synced immediately)
-- [ ] Sync with clean merge
-- [ ] Sync with conflicts (stops, reports)
-- [ ] Resume after conflict resolution
-
-**Exit criteria:** Full sync cycle works including conflict resolution flow.
+- [x] Preflight: branch exists → error
+- [x] Preflight: not a git repo → error
+- [x] Create simple workspace with mock git operations
+- [x] Create rollback on failure
+- [x] List with multiple workspaces
+- [x] Status output structure
+- [x] `--json` flag produces envelope output
+- [x] Switch subcommand tests (find by branch, by ID, JSON, error cases)
+- [x] Help subcommand tests
 
 ---
 
-## Phase 4: Close
+## Phase 3: Create (grouped workspaces)
 
-**Goal:** Can merge-close and discard-close workspaces atomically.
+**Goal:** Extend create to handle multi-repo grouped workspaces.
 
-**Success Criteria:**
-- `grove workspace close feature-x --merge` does ff-only merge on all repos, cleans up
-- `grove workspace close feature-x --discard` force-removes everything
-- Dirty workspace blocks merge-close
-- Un-synced workspace blocks merge-close
+**Status: COMPLETE**
 
-### Task 4.1: Close --merge command
+### Task 3.1: Grouped create
 
-- [ ] Create `src/workspace/close.ts`
-- [ ] Pre-checks: no dirty repos, all synced
-- [ ] Set status to closing
-- [ ] Children first, then parent: checkout parentBranch, merge --ff-only, worktree remove, branch -d
-- [ ] If ff-only fails on any repo: abort, suggest re-sync
-- [ ] On success: delete state file
-- [ ] On failure: set status failed, report which repo failed
+- [x] Extend `src/workspace/create.ts` with grouped workspace path
+- [x] Load workspace config via `loadWorkspaceConfig()`
+- [x] Validate child repos exist at declared paths and are git repos
+- [x] **Branch consistency check:** all repos must be on the same branch, error with details if not
+- [x] Preflight: check branch doesn't exist in ANY repo before creating in any
+- [x] Create parent worktree, then children nested inside
+- [x] Rollback: if child N fails, remove children 0..N-1 and parent
 
-### Task 4.2: Close --discard command
+### Task 3.2: Tests for phase 3
 
-- [ ] Force remove all worktrees
-- [ ] Force delete all branches
-- [ ] Delete state file
-- [ ] Should succeed even if some repos are in weird states
+- [x] Grouped create with mock git operations
+- [x] Branch consistency: all on main → ok
+- [x] Branch consistency: mixed branches → error with details
+- [x] Branch exists in one child but not others → error
+- [x] Rollback on partial grouped create failure
+- [x] Config with invalid child paths → error
 
-### Task 4.3: Failed state recovery
+---
 
-- [ ] `create` detects existing failed state → clean up and retry
-- [ ] `close --discard` works on failed state → always succeeds
+## Phase 4: Sync & Close
 
-### Task 4.4: Tests for phase 4
+**Goal:** Full lifecycle — sync with upstream and close (merge or discard).
 
-- [ ] Merge-close happy path
-- [ ] Merge-close blocked by dirty files
-- [ ] Merge-close blocked by unsynced state
-- [ ] Merge-close fails on ff-only (main moved)
-- [ ] Discard-close happy path
-- [ ] Discard-close from failed state
-- [ ] Recovery from failed create
+**Status: COMPLETE**
 
-**Exit criteria:** Full lifecycle works: create → work → sync → close. Manual end-to-end test with acorn repos.
+### Task 4.1: Sync command
+
+- [x] Create `src/workspace/sync.ts`
+- [x] Initialize sync progress in state (all pending)
+- [x] For each pending repo (parent first, then children): fetch, merge
+- [x] Detect conflicts (`git diff --name-only --diff-filter=U`)
+- [x] On conflict: update state, exit with structured error
+- [x] On resume: check for merge-in-progress, uncommitted changes, or clean state
+- [x] Warn if conflicts resolved but not committed (dirty tree + no MERGE_HEAD)
+- [x] On all synced: clear sync state
+
+### Task 4.2: Conflict detection helpers
+
+- [x] Add to `src/workspace/git.ts`:
+- [x] `isMergeInProgress(worktreePath)` — check for MERGE_HEAD in worktree's git dir
+- [x] `getConflictedFiles(worktreePath)` — list files with conflicts
+- [x] `hasDirtyWorkingTree(worktreePath)` — uncommitted changes check
+
+### Task 4.3: Close --merge command
+
+- [x] Create `src/workspace/close.ts`
+- [x] Pre-checks: no dirty repos, all synced
+- [x] Set status to closing
+- [x] Children first, then parent: checkout parentBranch, merge --ff-only, worktree remove, branch -d
+- [x] If ff-only fails on any repo: abort, suggest re-sync
+- [x] On success: delete state file
+- [x] On failure: set status failed, report which repo failed
+
+### Task 4.4: Close --discard command
+
+- [x] Best-effort cleanup — errors collected, not fatal
+- [x] Abort any active merge before removing worktree
+- [x] Force remove all worktrees (ignore if already gone)
+- [x] Force delete all branches (ignore if already deleted)
+- [x] Delete state file
+- [x] Report collected errors as warnings
+
+### Task 4.5: Failed state recovery
+
+- [x] `create` detects existing failed state → clean up and retry
+- [x] `close --discard` works on failed state → always succeeds
+
+### Task 4.6: Tests for phase 4
+
+- [x] Sync with no upstream changes (all synced immediately)
+- [x] Sync with clean merge
+- [x] Sync with conflicts (stops, reports)
+- [x] Resume after conflict resolution
+- [x] Resume with resolved-but-uncommitted changes → warning
+- [x] Merge-close happy path
+- [x] Merge-close blocked by dirty files
+- [x] Merge-close blocked by unsynced state
+- [x] Merge-close fails on ff-only (main moved)
+- [x] Discard-close happy path
+- [x] Discard-close from failed state
+- [x] Discard-close with active merge in progress
+- [x] Recovery from failed create
+
+---
+
+## Phase 5: End-to-End Tests
+
+**Goal:** Verify the full lifecycle with real git repos.
+
+**Status: COMPLETE**
+
+### Task 5.1: E2E test infrastructure
+
+- [x] Create `test/e2e/workspace.e2e.test.ts`
+- [x] Helper to create temp git repos with commits (parent + children)
+- [x] Helper to set up a parent repo with `.grove.yaml` pointing to children
+- [x] Use `GROVE_WORKTREE_DIR` to isolate worktrees in temp dir
+- [x] Use `GROVE_STATE_DIR` to isolate state files in temp dir
+- [x] Cleanup: remove all temp dirs in afterEach/afterAll
+- [x] Separate vitest config (`vitest.e2e.config.ts`) for slow tests
+
+### Task 5.2: Simple workspace E2E
+
+- [x] Create → verify worktree exists with correct branch
+- [x] List → shows the workspace
+- [x] Status → shows correct dirty/commit counts
+- [x] Make changes, commit → status reflects
+- [x] Sync → merges upstream changes
+- [x] Close --merge → branch merged, worktree gone, state file gone
+- [x] Close --discard → everything cleaned up
+- [x] Switch → returns workspace root path (by branch and by ID)
+- [x] List → flags missing workspaces whose root directory is gone
+
+### Task 5.3: Grouped workspace E2E
+
+- [x] Create with parent + 2 children → verify nested layout
+- [x] Verify all repos on feature branch
+- [x] Make changes across repos → status shows all
+- [x] Sync with upstream changes in one child → merges correctly
+- [x] Sync with conflict → stops, reports, resume works
+- [x] Close --merge → all repos merged, all worktrees gone
+- [x] Close --discard → force cleanup works
+
+### Task 5.4: Edge case E2E
+
+- [x] Create when branch already exists → preflight error, nothing touched
+- [x] Create with repos on different branches → preflight error with details
+- [x] Close --merge with dirty files → blocked with message
+- [x] Close --discard with active merge conflict → succeeds
+
+---
+
+## Post-Implementation Improvements
+
+Applied after initial implementation was complete:
+
+- [x] Fix `detectWorkspaceFromCwd` path prefix matching bug (prevented false matches on similar paths)
+- [x] Add `GROVE_STATE_DIR` env var for state directory isolation (same pattern as `GROVE_WORKTREE_DIR`)
+- [x] Add stale workspace detection (`missing` flag in `listWorkspaces()`)
+- [x] Add comprehensive agent-readable help system (`grove workspace help [command]`, `--help` per subcommand)
+- [x] Fix redundant state lookup in `switch` subcommand
+- [x] Isolate E2E test state files via `GROVE_STATE_DIR` (no longer writes to real `~/.grove/`)

@@ -221,6 +221,14 @@ export async function writeState(state: EnvironmentState, config: GroveConfig): 
     mkdirSync(stateDir, { recursive: true });
   }
 
+  // Ensure state file exists for lockfile (proper-lockfile requires it).
+  // Use 'wx' flag for atomic create — no-op if file already exists.
+  try {
+    writeFileSync(stateFile, '{}', { flag: 'wx' });
+  } catch {
+    // File already exists — expected
+  }
+
   state.lastEnsure = new Date().toISOString();
 
   try {
