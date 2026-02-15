@@ -77,3 +77,11 @@ export type {
   GroveConfig,
   WorkspaceConfig,
 } from './types.js';
+
+// API modules (namespace imports)
+import * as repo from './repo.js';
+import * as config from './config.js';
+import * as workspace from './workspace.js';
+import * as request from './request.js';
+
+export { repo, config, workspace, request };
