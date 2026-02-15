@@ -13,6 +13,7 @@ import { shellCommand } from './commands/shell.js';
 import { reloadCommand } from './commands/reload.js';
 import { workspaceCommand } from './commands/workspace.js';
 import { repoCommand } from './commands/repo.js';
+import { requestCommand } from './commands/request.js';
 import { printError } from './output.js';
 
 function printUsage(): void {
@@ -34,6 +35,8 @@ Usage:
                                            Run 'grove repo help' for details
   grove workspace <subcommand>             Manage multi-repo workspaces (create, list, status, sync, close, switch)
                                            Run 'grove workspace help' for details
+  grove request <target> <plan> --body ..  File a cross-repo plan request
+                                           Run 'grove request --help' for details
 
 Options:
   --frontend <name>   Start specific frontend only (for 'up' command)
@@ -78,6 +81,16 @@ async function main(): Promise<void> {
   if (command === 'workspace') {
     try {
       await workspaceCommand(args.slice(1));
+    } catch (error) {
+      printError(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (command === 'request') {
+    try {
+      await requestCommand(args.slice(1));
     } catch (error) {
       printError(`Error: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
