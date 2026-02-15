@@ -21,8 +21,8 @@ export interface RepoListResult {
   repos: RepoListItem[];
 }
 
-export function listRepos(): RepoListResult {
-  const registry = readRegistry();
+export async function listRepos(): Promise<RepoListResult> {
+  const registry = await readRegistry();
   const workspaces = listWorkspaceStates();
 
   const repos: RepoListItem[] = registry.repos

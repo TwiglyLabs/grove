@@ -113,7 +113,7 @@ async function handleRemove(args: string[], ctx: RepoContext): Promise<void> {
 
 async function handleList(ctx: RepoContext): Promise<void> {
   try {
-    const result = listRepos();
+    const result = await listRepos();
     if (ctx.json) {
       jsonSuccess(result);
     } else {

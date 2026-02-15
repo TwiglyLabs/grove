@@ -129,7 +129,7 @@ describe('repo registry e2e', () => {
     expect(result.alreadyRegistered).toBe(false);
 
     // List
-    const list = listRepos();
+    const list = await listRepos();
     expect(list.repos).toHaveLength(1);
     expect(list.repos[0].name).toBe('lifecycle-repo');
     expect(list.repos[0].path).toBe(repo);
@@ -140,7 +140,7 @@ describe('repo registry e2e', () => {
     await removeRepo('lifecycle-repo');
 
     // List after remove
-    const listAfter = listRepos();
+    const listAfter = await listRepos();
     expect(listAfter.repos).toHaveLength(0);
   });
 
@@ -154,7 +154,7 @@ describe('repo registry e2e', () => {
     expect(second.alreadyRegistered).toBe(true);
 
     // Only one entry in registry
-    const registry = readRegistry();
+    const registry = await readRegistry();
     expect(registry.repos).toHaveLength(1);
 
     // Cleanup
@@ -191,14 +191,14 @@ describe('repo registry e2e', () => {
     await addRepo('stale-repo', repo);
 
     // Verify exists: true initially
-    let list = listRepos();
+    let list = await listRepos();
     expect(list.repos[0].exists).toBe(true);
 
     // Delete the repo directory
     rmSync(repo, { recursive: true, force: true });
 
     // Verify exists: false
-    list = listRepos();
+    list = await listRepos();
     expect(list.repos[0].exists).toBe(false);
     expect(list.repos[0].name).toBe('stale-repo');
 
@@ -215,7 +215,7 @@ describe('repo registry e2e', () => {
     await addRepo('alpha', repoA);
     await addRepo('mike', repoM);
 
-    const list = listRepos();
+    const list = await listRepos();
     expect(list.repos.map(r => r.name)).toEqual(['alpha', 'mike', 'zulu']);
 
     // Cleanup
@@ -236,7 +236,7 @@ describe('repo registry e2e', () => {
     createdWorkspaceIds.push(ws.id);
 
     // List repos — should show the workspace
-    const list = listRepos();
+    const list = await listRepos();
     const found = list.repos.find(r => r.name === 'joined-repo');
     expect(found).toBeDefined();
     expect(found!.workspaces).toHaveLength(1);
@@ -249,7 +249,7 @@ describe('repo registry e2e', () => {
     await closeWorkspace(branch, 'discard');
     createdWorkspaceIds.length = 0; // Already cleaned up
 
-    const listAfter = listRepos();
+    const listAfter = await listRepos();
     const foundAfter = listAfter.repos.find(r => r.name === 'joined-repo');
     expect(foundAfter!.workspaces).toHaveLength(0);
 
@@ -269,7 +269,7 @@ describe('repo registry e2e', () => {
     createdWorkspaceIds.push(ws.id);
 
     // List repos — should show workspace with all 3 repos counted
-    const list = listRepos();
+    const list = await listRepos();
     const found = list.repos.find(r => r.name === 'grouped-repo');
     expect(found).toBeDefined();
     expect(found!.workspaces).toHaveLength(1);
@@ -294,7 +294,7 @@ describe('repo registry e2e', () => {
     const ws2 = await createWorkspace(branch2, { from: repo });
     createdWorkspaceIds.push(ws2.id);
 
-    const list = listRepos();
+    const list = await listRepos();
     const found = list.repos.find(r => r.name === 'multi-ws-repo');
     expect(found).toBeDefined();
     expect(found!.workspaces).toHaveLength(2);

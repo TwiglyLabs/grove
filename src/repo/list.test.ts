@@ -65,12 +65,12 @@ describe('listRepos', () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
-  it('returns empty list when no repos registered', () => {
-    const result = listRepos();
+  it('returns empty list when no repos registered', async () => {
+    const result = await listRepos();
     expect(result.repos).toEqual([]);
   });
 
-  it('returns repos sorted alphabetically', () => {
+  it('returns repos sorted alphabetically', async () => {
     writeRepoRegistry({
       version: 1,
       repos: [
@@ -79,11 +79,11 @@ describe('listRepos', () => {
       ],
     });
 
-    const result = listRepos();
+    const result = await listRepos();
     expect(result.repos.map(r => r.name)).toEqual(['alpha', 'zeta']);
   });
 
-  it('marks non-existent paths with exists: false', () => {
+  it('marks non-existent paths with exists: false', async () => {
     writeRepoRegistry({
       version: 1,
       repos: [
@@ -91,11 +91,11 @@ describe('listRepos', () => {
       ],
     });
 
-    const result = listRepos();
+    const result = await listRepos();
     expect(result.repos[0].exists).toBe(false);
   });
 
-  it('marks existing paths with exists: true', () => {
+  it('marks existing paths with exists: true', async () => {
     // testDir itself exists
     writeRepoRegistry({
       version: 1,
@@ -104,11 +104,11 @@ describe('listRepos', () => {
       ],
     });
 
-    const result = listRepos();
+    const result = await listRepos();
     expect(result.repos[0].exists).toBe(true);
   });
 
-  it('joins workspace state with matching repo by source path', () => {
+  it('joins workspace state with matching repo by source path', async () => {
     const repoPath = '/tmp/repos/myrepo';
     writeRepoRegistry({
       version: 1,
@@ -125,7 +125,7 @@ describe('listRepos', () => {
       ],
     }));
 
-    const result = listRepos();
+    const result = await listRepos();
     expect(result.repos[0].workspaces).toHaveLength(1);
     expect(result.repos[0].workspaces[0]).toEqual({
       id: 'myrepo-feature-x',
@@ -136,7 +136,7 @@ describe('listRepos', () => {
     });
   });
 
-  it('does not join workspaces with non-matching source', () => {
+  it('does not join workspaces with non-matching source', async () => {
     writeRepoRegistry({
       version: 1,
       repos: [
@@ -147,11 +147,11 @@ describe('listRepos', () => {
       source: '/tmp/repos/myrepo',
     }));
 
-    const result = listRepos();
+    const result = await listRepos();
     expect(result.repos[0].workspaces).toEqual([]);
   });
 
-  it('joins multiple workspaces to same repo', () => {
+  it('joins multiple workspaces to same repo', async () => {
     const repoPath = '/tmp/repos/myrepo';
     writeRepoRegistry({
       version: 1,
@@ -162,7 +162,7 @@ describe('listRepos', () => {
     writeWorkspaceState(makeWorkspaceState({ id: 'ws-1', source: repoPath, branch: 'feature-a' }));
     writeWorkspaceState(makeWorkspaceState({ id: 'ws-2', source: repoPath, branch: 'feature-b' }));
 
-    const result = listRepos();
+    const result = await listRepos();
     expect(result.repos[0].workspaces).toHaveLength(2);
   });
 });

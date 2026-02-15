@@ -48,7 +48,7 @@ function parseTrellisConfig(repoPath: string): string {
   return 'plans';
 }
 
-function detectSourceRepo(registry: ReturnType<typeof readRegistry>): string | null {
+function detectSourceRepo(registry: Awaited<ReturnType<typeof readRegistry>>): string | null {
   try {
     // --git-common-dir returns the shared .git directory, even from a worktree.
     // From main checkout: returns ".git" (relative)
@@ -162,7 +162,7 @@ export async function requestCommand(args: string[]): Promise<void> {
   }
 
   // 2. Resolve target repo
-  const registry = readRegistry();
+  const registry = await readRegistry();
   const targetEntry = registry.repos.find(r => r.name === targetRepoName);
   if (!targetEntry) {
     const msg = `Repo '${targetRepoName}' is not registered. Run 'grove repo add' first.`;

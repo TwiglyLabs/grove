@@ -3,6 +3,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import * as lockfile from 'proper-lockfile';
 import { RepoRegistry, type RepoEntry } from './types.js';
+import { createRepoId } from '../api/identity.js';
 
 export function getRegistryDir(): string {
   return process.env.GROVE_REGISTRY_DIR || join(homedir(), '.grove');
@@ -24,7 +25,7 @@ function emptyRegistry(): RepoRegistry {
   return { version: 1, repos: [] };
 }
 
-export function readRegistry(): RepoRegistry {
+function readRegistryFromDisk(): RepoRegistry {
   const filePath = registryFilePath();
   if (!existsSync(filePath)) return emptyRegistry();
 
@@ -56,6 +57,32 @@ async function writeRegistry(registry: RepoRegistry): Promise<void> {
   }
 }
 
+/**
+ * Read the repo registry, lazily migrating entries that lack an `id` field.
+ * When missing IDs are found, they are generated and written back atomically.
+ */
+export async function readRegistry(): Promise<RepoRegistry> {
+  const registry = readRegistryFromDisk();
+
+  if (registry.repos.length === 0) return registry;
+
+  // Check if any entries are missing IDs
+  const needsMigration = registry.repos.some(entry => !entry.id);
+  if (!needsMigration) return registry;
+
+  // Backfill IDs
+  for (const entry of registry.repos) {
+    if (!entry.id) {
+      entry.id = createRepoId();
+    }
+  }
+
+  // Write back atomically
+  await writeRegistry(registry);
+
+  return registry;
+}
+
 export interface AddResult {
   name: string;
   path: string;
@@ -63,7 +90,7 @@ export interface AddResult {
 }
 
 export async function addRepo(name: string, path: string): Promise<AddResult> {
-  const registry = readRegistry();
+  const registry = await readRegistry();
 
   // Check for duplicate path (no-op)
   const existingByPath = registry.repos.find(r => r.path === path);
@@ -80,6 +107,7 @@ export async function addRepo(name: string, path: string): Promise<AddResult> {
   }
 
   const entry: RepoEntry = {
+    id: createRepoId(),
     name,
     path,
     addedAt: new Date().toISOString(),
@@ -92,7 +120,7 @@ export async function addRepo(name: string, path: string): Promise<AddResult> {
 }
 
 export async function removeRepo(name: string): Promise<void> {
-  const registry = readRegistry();
+  const registry = await readRegistry();
 
   const idx = registry.repos.findIndex(r => r.name === name);
   if (idx === -1) {

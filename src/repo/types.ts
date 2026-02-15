@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const RepoEntry = z.object({
+  id: z.string().optional(),
   name: z.string(),
   path: z.string(),
   addedAt: z.string().datetime(),
