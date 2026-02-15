@@ -1,35 +1,30 @@
-import { execSync } from 'child_process';
-import type { GroveConfig } from '../config.js';
-import { readState, releasePortBlock } from '../state.js';
+import type { RepoId } from '../api/identity.js';
+import { destroy } from '../api/environment.js';
 import { printInfo, printSuccess, printWarning } from '../output.js';
-import { downCommand } from './down.js';
 
-export async function destroyCommand(config: GroveConfig): Promise<void> {
-  // First stop all processes
-  await downCommand(config);
+export async function destroyCommand(repoId: RepoId): Promise<void> {
+  const result = await destroy(repoId);
 
-  const state = readState(config);
-
-  if (!state) {
-    printWarning('No state file found');
-    return;
+  // Report process stoppage
+  for (const entry of result.stopped.stopped) {
+    if (entry.success) {
+      printSuccess(`Stopped ${entry.name} (PID: ${entry.pid})`);
+    } else {
+      printWarning(`Failed to stop ${entry.name} (PID: ${entry.pid})`);
+    }
   }
 
-  // Delete namespace
-  printInfo(`Deleting namespace ${state.namespace}...`);
-  try {
-    execSync(`kubectl delete namespace ${state.namespace}`, { stdio: 'inherit' });
+  // Report namespace deletion
+  if (result.namespaceDeleted) {
     printSuccess('Namespace deleted');
-  } catch (error) {
+  } else {
     printWarning('Failed to delete namespace - it may not exist');
   }
 
-  // Delete state file
-  printInfo('Removing state file...');
-  try {
-    releasePortBlock(config, state.worktreeId);
+  // Report state removal
+  if (result.stateRemoved) {
     printSuccess('State file removed');
-  } catch (error) {
+  } else {
     printWarning('Failed to remove state file');
   }
 

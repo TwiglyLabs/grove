@@ -1,10 +1,12 @@
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-import type { GroveConfig } from '../config.js';
+import type { RepoId } from '../api/identity.js';
+import { load as loadConfig } from '../api/config.js';
 import { readState } from '../state.js';
 import { printError } from '../output.js';
 
-export async function reloadCommand(config: GroveConfig, service?: string): Promise<void> {
+export async function reloadCommand(repoId: RepoId, service?: string): Promise<void> {
+  const config = await loadConfig(repoId);
   const targets = config.utilities?.reloadTargets ?? [];
 
   if (!service) {

@@ -1,12 +1,15 @@
-import { spawn, execSync } from 'child_process';
-import type { GroveConfig } from '../config.js';
-import { readState } from '../state.js';
+import { spawn } from 'child_process';
+import type { RepoId } from '../api/identity.js';
+import { getShellCommand } from '../api/shell.js';
+import { load as loadConfig } from '../api/config.js';
+import { EnvironmentNotRunningError, PodNotFoundError } from '../api/errors.js';
 import { printError } from '../output.js';
 
-export async function shellCommand(config: GroveConfig, service?: string): Promise<void> {
-  const targets = config.utilities?.shellTargets ?? [];
-
+export async function shellCommand(repoId: RepoId, service?: string): Promise<void> {
   if (!service) {
+    // Show available targets from config
+    const config = await loadConfig(repoId);
+    const targets = config.utilities?.shellTargets ?? [];
     printError('Usage: grove shell <service>');
     console.log('');
     console.log('Available services:');
@@ -14,46 +17,35 @@ export async function shellCommand(config: GroveConfig, service?: string): Promi
     process.exit(1);
   }
 
-  const target = targets.find(t => t.name === service);
-  if (!target) {
-    printError(`Unknown service: ${service}`);
-    console.log('');
-    console.log('Available services:');
-    targets.forEach((t) => console.log(`  - ${t.name}`));
-    process.exit(1);
+  let cmd;
+  try {
+    cmd = await getShellCommand(repoId, service);
+  } catch (error) {
+    if (error instanceof EnvironmentNotRunningError) {
+      printError('Dev environment not running. Run `grove up` first.');
+      process.exit(1);
+    }
+    if (error instanceof PodNotFoundError) {
+      printError(`No running pod found for ${service}`);
+      process.exit(1);
+    }
+    if (error instanceof Error && error.message.includes('Unknown shell target')) {
+      const config = await loadConfig(repoId);
+      const targets = config.utilities?.shellTargets ?? [];
+      printError(`Unknown service: ${service}`);
+      console.log('');
+      console.log('Available services:');
+      targets.forEach((t) => console.log(`  - ${t.name}`));
+      process.exit(1);
+    }
+    throw error;
   }
 
-  const state = readState(config);
-  if (!state) {
-    printError('Dev environment not running. Run `grove up` first.');
-    process.exit(1);
-  }
-
-  const podSelector = target.podSelector ?? `app=${service}`;
-  const shell = target.shell ?? '/bin/sh';
-
-  // Get the first pod for this service
-  const podName = execSync(
-    `kubectl get pods -n ${state.namespace} -l ${podSelector} -o jsonpath='{.items[0].metadata.name}'`,
-    { encoding: 'utf-8' }
-  )
-    .trim()
-    .replace(/'/g, '');
-
-  if (!podName) {
-    printError(`No running pod found for ${service}`);
-    process.exit(1);
-  }
-
-  console.log(`Opening shell in ${podName}...`);
+  console.log(`Opening shell in ${cmd.args[cmd.args.indexOf('-it') + 1]}...`);
   console.log('(Type "exit" to close)');
   console.log('');
 
-  const proc = spawn(
-    'kubectl',
-    ['exec', '-n', state.namespace, '-it', podName, '--', shell],
-    { stdio: 'inherit' }
-  );
+  const proc = spawn(cmd.command, cmd.args, { stdio: 'inherit' });
 
   proc.on('error', (err) => {
     printError(`Failed to start kubectl: ${err.message}`);

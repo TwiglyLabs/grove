@@ -1,25 +1,27 @@
-import type { GroveConfig } from '../config.js';
-import { readState } from '../state.js';
+import type { RepoId } from '../api/identity.js';
+import { down } from '../api/environment.js';
 import { printInfo, printSuccess, printWarning } from '../output.js';
 
-export async function downCommand(config: GroveConfig): Promise<void> {
-  const state = readState(config);
+export async function downCommand(repoId: RepoId): Promise<void> {
+  printInfo('Stopping processes...');
 
-  if (!state) {
+  const result = await down(repoId);
+
+  if (result.stopped.length === 0 && result.notRunning.length === 0) {
     printWarning('No state file found - environment may not be running');
     return;
   }
 
-  printInfo('Stopping processes...');
-
-  // Stop all processes
-  for (const [name, processInfo] of Object.entries(state.processes)) {
-    try {
-      process.kill(processInfo.pid, 'SIGTERM');
-      printSuccess(`Stopped ${name} (PID: ${processInfo.pid})`);
-    } catch (error) {
-      printWarning(`Failed to stop ${name} (PID: ${processInfo.pid}) - may already be stopped`);
+  for (const entry of result.stopped) {
+    if (entry.success) {
+      printSuccess(`Stopped ${entry.name} (PID: ${entry.pid})`);
+    } else {
+      printWarning(`Failed to stop ${entry.name} (PID: ${entry.pid})`);
     }
+  }
+
+  for (const name of result.notRunning) {
+    printWarning(`${name} - already stopped`);
   }
 
   printSuccess('All processes stopped');

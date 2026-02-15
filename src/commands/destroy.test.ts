@@ -1,17 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before imports
-vi.mock('child_process', () => ({
-  execSync: vi.fn(),
-}));
-
-vi.mock('../state.js', () => ({
-  readState: vi.fn(),
-  releasePortBlock: vi.fn(),
-}));
-
-vi.mock('./down.js', () => ({
-  downCommand: vi.fn(),
+vi.mock('../api/environment.js', () => ({
+  destroy: vi.fn(),
 }));
 
 vi.mock('../output.js', () => ({
@@ -20,136 +11,132 @@ vi.mock('../output.js', () => ({
   printWarning: vi.fn(),
 }));
 
-import { execSync } from 'child_process';
 import { destroyCommand } from './destroy.js';
-import { readState, releasePortBlock } from '../state.js';
-import { downCommand } from './down.js';
-import { printInfo, printSuccess, printWarning } from '../output.js';
-import type { GroveConfig } from '../config.js';
-import type { EnvironmentState } from '../state.js';
+import { destroy } from '../api/environment.js';
+import { printSuccess, printWarning } from '../output.js';
+import { asRepoId } from '../api/identity.js';
 
-function makeConfig(): GroveConfig {
-  return {
-    project: { name: 'test-app', cluster: 'test-cluster' },
-    repoRoot: '/tmp/test-repo',
-    services: [],
-    helm: { chart: 'test', release: 'test', valuesFiles: [] },
-    portBlockSize: 5,
-  } as unknown as GroveConfig;
-}
-
-function makeState(): EnvironmentState {
-  return {
-    namespace: 'test-app-main',
-    branch: 'main',
-    worktreeId: 'main',
-    ports: {},
-    urls: {},
-    processes: {},
-    lastEnsure: new Date().toISOString(),
-  };
-}
+const testRepoId = asRepoId('repo_test123');
 
 describe('destroyCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('calls downCommand before doing anything else', async () => {
-    const config = makeConfig();
-    vi.mocked(readState).mockReturnValue(null);
+  it('reports when namespace deleted successfully', async () => {
+    vi.mocked(destroy).mockResolvedValue({
+      stopped: {
+        stopped: [],
+        notRunning: [],
+      },
+      namespaceDeleted: true,
+      stateRemoved: true,
+    });
 
-    await destroyCommand(config);
+    await destroyCommand(testRepoId);
 
-    expect(downCommand).toHaveBeenCalledWith(config);
-    expect(downCommand).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns early if readState returns null after calling downCommand', async () => {
-    const config = makeConfig();
-    vi.mocked(readState).mockReturnValue(null);
-
-    await destroyCommand(config);
-
-    expect(downCommand).toHaveBeenCalledWith(config);
-    expect(printWarning).toHaveBeenCalledWith('No state file found');
-    expect(execSync).not.toHaveBeenCalled();
-    expect(releasePortBlock).not.toHaveBeenCalled();
-  });
-
-  it('deletes namespace via kubectl', async () => {
-    const config = makeConfig();
-    const state = makeState();
-    vi.mocked(readState).mockReturnValue(state);
-
-    await destroyCommand(config);
-
-    expect(execSync).toHaveBeenCalledWith(
-      'kubectl delete namespace test-app-main',
-      { stdio: 'inherit' }
-    );
-    expect(printInfo).toHaveBeenCalledWith('Deleting namespace test-app-main...');
     expect(printSuccess).toHaveBeenCalledWith('Namespace deleted');
-  });
-
-  it('calls releasePortBlock with correct worktreeId', async () => {
-    const config = makeConfig();
-    const state = makeState();
-    vi.mocked(readState).mockReturnValue(state);
-
-    await destroyCommand(config);
-
-    expect(releasePortBlock).toHaveBeenCalledWith(config, 'main');
     expect(printSuccess).toHaveBeenCalledWith('State file removed');
+    expect(printSuccess).toHaveBeenCalledWith('Environment destroyed');
   });
 
   it('handles kubectl failure gracefully', async () => {
-    const config = makeConfig();
-    const state = makeState();
-    vi.mocked(readState).mockReturnValue(state);
-    vi.mocked(execSync).mockImplementation(() => {
-      throw new Error('kubectl error');
+    vi.mocked(destroy).mockResolvedValue({
+      stopped: {
+        stopped: [],
+        notRunning: [],
+      },
+      namespaceDeleted: false,
+      stateRemoved: true,
     });
 
-    await destroyCommand(config);
+    await destroyCommand(testRepoId);
 
     expect(printWarning).toHaveBeenCalledWith('Failed to delete namespace - it may not exist');
-    // Should still try to release port block
-    expect(releasePortBlock).toHaveBeenCalledWith(config, 'main');
+    expect(printSuccess).toHaveBeenCalledWith('State file removed');
+    expect(printSuccess).toHaveBeenCalledWith('Environment destroyed');
   });
 
   it('handles releasePortBlock failure gracefully', async () => {
-    const config = makeConfig();
-    const state = makeState();
-    vi.mocked(readState).mockReturnValue(state);
-    vi.mocked(releasePortBlock).mockImplementation(() => {
-      throw new Error('release error');
+    vi.mocked(destroy).mockResolvedValue({
+      stopped: {
+        stopped: [],
+        notRunning: [],
+      },
+      namespaceDeleted: true,
+      stateRemoved: false,
     });
 
-    await destroyCommand(config);
+    await destroyCommand(testRepoId);
 
+    expect(printSuccess).toHaveBeenCalledWith('Namespace deleted');
     expect(printWarning).toHaveBeenCalledWith('Failed to remove state file');
     expect(printSuccess).toHaveBeenCalledWith('Environment destroyed');
   });
 
-  it('prints final success message after cleanup', async () => {
-    const config = makeConfig();
-    const state = makeState();
-    vi.mocked(readState).mockReturnValue(state);
+  it('prints stopped processes', async () => {
+    vi.mocked(destroy).mockResolvedValue({
+      stopped: {
+        stopped: [
+          { name: 'api', pid: 1234, success: true },
+          { name: 'worker', pid: 5678, success: true },
+        ],
+        notRunning: [],
+      },
+      namespaceDeleted: true,
+      stateRemoved: true,
+    });
 
-    await destroyCommand(config);
+    await destroyCommand(testRepoId);
+
+    expect(printSuccess).toHaveBeenCalledWith('Stopped api (PID: 1234)');
+    expect(printSuccess).toHaveBeenCalledWith('Stopped worker (PID: 5678)');
+  });
+
+  it('prints failed process stops', async () => {
+    vi.mocked(destroy).mockResolvedValue({
+      stopped: {
+        stopped: [
+          { name: 'api', pid: 1234, success: false },
+        ],
+        notRunning: [],
+      },
+      namespaceDeleted: true,
+      stateRemoved: true,
+    });
+
+    await destroyCommand(testRepoId);
+
+    expect(printWarning).toHaveBeenCalledWith('Failed to stop api (PID: 1234)');
+  });
+
+  it('prints final success message after cleanup', async () => {
+    vi.mocked(destroy).mockResolvedValue({
+      stopped: {
+        stopped: [],
+        notRunning: [],
+      },
+      namespaceDeleted: true,
+      stateRemoved: true,
+    });
+
+    await destroyCommand(testRepoId);
 
     expect(printSuccess).toHaveBeenCalledWith('Environment destroyed');
   });
 
-  it('prints all expected info messages', async () => {
-    const config = makeConfig();
-    const state = makeState();
-    vi.mocked(readState).mockReturnValue(state);
+  it('calls destroy API with correct repoId', async () => {
+    vi.mocked(destroy).mockResolvedValue({
+      stopped: {
+        stopped: [],
+        notRunning: [],
+      },
+      namespaceDeleted: false,
+      stateRemoved: false,
+    });
 
-    await destroyCommand(config);
+    await destroyCommand(testRepoId);
 
-    expect(printInfo).toHaveBeenCalledWith('Deleting namespace test-app-main...');
-    expect(printInfo).toHaveBeenCalledWith('Removing state file...');
+    expect(destroy).toHaveBeenCalledWith(testRepoId);
   });
 });

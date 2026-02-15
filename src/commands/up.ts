@@ -1,12 +1,18 @@
-import type { GroveConfig } from '../config.js';
-import { ensureEnvironment } from '../controller.js';
-import type { UpOptions } from '../controller.js';
+import type { RepoId } from '../api/identity.js';
+import { up } from '../api/environment.js';
+import { load as loadConfig } from '../api/config.js';
 import { printBanner, printUrlTable } from '../output.js';
 
-export async function upCommand(config: GroveConfig, options: UpOptions): Promise<void> {
+export interface UpOptions {
+  frontend?: string;
+  all?: boolean;
+}
+
+export async function upCommand(repoId: RepoId, options: UpOptions): Promise<void> {
+  const config = await loadConfig(repoId);
   printBanner(config.project.name);
 
-  const state = await ensureEnvironment(config, options);
+  const result = await up(repoId, options);
 
-  printUrlTable(state.urls);
+  printUrlTable(result.urls);
 }

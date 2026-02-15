@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before imports
+vi.mock('../api/config.js', () => ({
+  load: vi.fn(),
+}));
+
 vi.mock('../state.js', () => ({
   readState: vi.fn(),
 }));
@@ -15,11 +19,15 @@ vi.mock('../output.js', () => ({
 }));
 
 import { watchCommand } from './watch.js';
+import { load as loadConfig } from '../api/config.js';
 import { readState } from '../state.js';
 import { FileWatcher } from '../watcher.js';
 import { printInfo, printWarning } from '../output.js';
+import { asRepoId } from '../api/identity.js';
 import type { GroveConfig } from '../config.js';
 import type { EnvironmentState } from '../state.js';
+
+const testRepoId = asRepoId('repo_test123');
 
 function makeConfig(): GroveConfig {
   return {
@@ -46,13 +54,13 @@ function makeState(): EnvironmentState {
 describe('watchCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(loadConfig).mockResolvedValue(makeConfig());
   });
 
   it('returns early with warning when readState returns null', async () => {
-    const config = makeConfig();
     vi.mocked(readState).mockReturnValue(null);
 
-    await watchCommand(config);
+    await watchCommand(testRepoId);
 
     expect(printWarning).toHaveBeenCalledWith('No state file found - run "grove up" first');
     expect(FileWatcher).not.toHaveBeenCalled();
@@ -61,6 +69,7 @@ describe('watchCommand', () => {
   it('creates FileWatcher with config and state', async () => {
     const config = makeConfig();
     const state = makeState();
+    vi.mocked(loadConfig).mockResolvedValue(config);
     vi.mocked(readState).mockReturnValue(state);
 
     const mockStart = vi.fn();
@@ -72,7 +81,7 @@ describe('watchCommand', () => {
     } as any);
 
     // Don't await - the command sets up a signal handler and doesn't return
-    const promise = watchCommand(config);
+    const promise = watchCommand(testRepoId);
 
     // Wait a tick for sync code to execute
     await new Promise(r => setTimeout(r, 10));
@@ -82,7 +91,6 @@ describe('watchCommand', () => {
   });
 
   it('calls watcher.start()', async () => {
-    const config = makeConfig();
     const state = makeState();
     vi.mocked(readState).mockReturnValue(state);
 
@@ -95,7 +103,7 @@ describe('watchCommand', () => {
     } as any);
 
     // Don't await
-    const promise = watchCommand(config);
+    const promise = watchCommand(testRepoId);
 
     // Wait a tick
     await new Promise(r => setTimeout(r, 10));
@@ -104,7 +112,6 @@ describe('watchCommand', () => {
   });
 
   it('prints info message about stopping', async () => {
-    const config = makeConfig();
     const state = makeState();
     vi.mocked(readState).mockReturnValue(state);
 
@@ -117,7 +124,7 @@ describe('watchCommand', () => {
     } as any);
 
     // Don't await
-    const promise = watchCommand(config);
+    const promise = watchCommand(testRepoId);
 
     // Wait a tick
     await new Promise(r => setTimeout(r, 10));

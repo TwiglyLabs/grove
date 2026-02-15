@@ -145,7 +145,7 @@ describe('repoCommand', () => {
       await repoCommand(['remove', 'nonexistent', '--json']);
       const output = JSON.parse(logged[0]);
       expect(output.ok).toBe(false);
-      expect(output.error).toContain("No repo registered with name 'nonexistent'");
+      expect(output.error).toContain('Repo not found: nonexistent');
     });
 
     it('errors when no name provided', async () => {

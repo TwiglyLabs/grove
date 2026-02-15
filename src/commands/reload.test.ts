@@ -5,6 +5,10 @@ vi.mock('fs', () => ({
   writeFileSync: vi.fn(),
 }));
 
+vi.mock('../api/config.js', () => ({
+  load: vi.fn(),
+}));
+
 vi.mock('../state.js', () => ({
   readState: vi.fn(),
 }));
@@ -15,10 +19,14 @@ vi.mock('../output.js', () => ({
 
 import { writeFileSync } from 'fs';
 import { reloadCommand } from './reload.js';
+import { load as loadConfig } from '../api/config.js';
 import { readState } from '../state.js';
 import { printError } from '../output.js';
 import { ExitError, mockProcessExit } from '../testing/test-helpers.js';
+import { asRepoId } from '../api/identity.js';
 import type { GroveConfig } from '../config.js';
+
+const testRepoId = asRepoId('repo_test123');
 
 const mockConfig = {
   project: { name: 'test-app', cluster: 'test-cluster' },
@@ -45,16 +53,18 @@ describe('reloadCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockProcessExit();
+    vi.mocked(loadConfig).mockResolvedValue(mockConfig);
+    vi.mocked(readState).mockReturnValue(mockState);
   });
 
   it('prints error when no service specified', async () => {
-    await expect(reloadCommand(mockConfig, undefined)).rejects.toThrow(ExitError);
+    await expect(reloadCommand(testRepoId, undefined)).rejects.toThrow(ExitError);
 
     expect(printError).toHaveBeenCalledWith('Usage: grove reload <service>');
   });
 
   it('prints error for unknown service', async () => {
-    await expect(reloadCommand(mockConfig, 'database')).rejects.toThrow(ExitError);
+    await expect(reloadCommand(testRepoId, 'database')).rejects.toThrow(ExitError);
 
     expect(printError).toHaveBeenCalledWith('Unknown service: database');
   });
@@ -62,15 +72,13 @@ describe('reloadCommand', () => {
   it('prints error when environment not running', async () => {
     vi.mocked(readState).mockReturnValue(null);
 
-    await expect(reloadCommand(mockConfig, 'api')).rejects.toThrow(ExitError);
+    await expect(reloadCommand(testRepoId, 'api')).rejects.toThrow(ExitError);
 
     expect(printError).toHaveBeenCalledWith('Dev environment not running. Run `grove up` first.');
   });
 
   it('writes reload request file for valid service', async () => {
-    vi.mocked(readState).mockReturnValue(mockState);
-
-    await reloadCommand(mockConfig, 'api');
+    await reloadCommand(testRepoId, 'api');
 
     expect(writeFileSync).toHaveBeenCalledWith(
       '/tmp/test-repo/.reload-request',
@@ -82,9 +90,10 @@ describe('reloadCommand', () => {
     for (const target of ['api', 'auth', 'worker']) {
       vi.clearAllMocks();
       mockProcessExit();
+      vi.mocked(loadConfig).mockResolvedValue(mockConfig);
       vi.mocked(readState).mockReturnValue(mockState);
 
-      await reloadCommand(mockConfig, target);
+      await reloadCommand(testRepoId, target);
 
       expect(writeFileSync).toHaveBeenCalledWith(
         '/tmp/test-repo/.reload-request',
@@ -98,8 +107,9 @@ describe('reloadCommand', () => {
       ...mockConfig,
       utilities: {},
     } as unknown as GroveConfig;
+    vi.mocked(loadConfig).mockResolvedValue(configNoTargets);
 
-    await expect(reloadCommand(configNoTargets, 'api')).rejects.toThrow(ExitError);
+    await expect(reloadCommand(testRepoId, 'api')).rejects.toThrow(ExitError);
 
     expect(printError).toHaveBeenCalledWith('Unknown service: api');
   });
@@ -109,8 +119,9 @@ describe('reloadCommand', () => {
       ...mockConfig,
       utilities: undefined,
     } as unknown as GroveConfig;
+    vi.mocked(loadConfig).mockResolvedValue(configNoUtils);
 
-    await expect(reloadCommand(configNoUtils, 'api')).rejects.toThrow(ExitError);
+    await expect(reloadCommand(testRepoId, 'api')).rejects.toThrow(ExitError);
 
     expect(printError).toHaveBeenCalledWith('Unknown service: api');
   });

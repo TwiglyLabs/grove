@@ -1,7 +1,7 @@
-import type { GroveConfig } from '../config.js';
-import { readState } from '../state.js';
+import type { RepoId } from '../api/identity.js';
+import { status } from '../api/environment.js';
 import { printWarning, printDashboard } from '../output.js';
-import type { DashboardData } from '../output.js';
+import type { DashboardData as InternalDashboardData } from '../output.js';
 
 function isProcessRunning(pid: number): boolean {
   try {
@@ -12,55 +12,66 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
-export async function statusCommand(config: GroveConfig): Promise<void> {
-  const state = readState(config);
+export async function statusCommand(repoId: RepoId): Promise<void> {
+  const data = await status(repoId);
 
-  if (!state) {
+  if (!data) {
     printWarning('No state file found - environment is not running');
     return;
   }
 
-  // Build dashboard data from state
-  const processes = Object.entries(state.processes).map(([name, info]) => ({
-    name,
-    pid: info.pid,
-    startedAt: info.startedAt,
-    running: isProcessRunning(info.pid),
-  }));
+  // Map API DashboardData to internal printDashboard format
+  const processes = [
+    ...data.services.map(s => ({
+      name: s.name,
+      pid: s.pid ?? 0,
+      startedAt: '',
+      running: s.status === 'running',
+    })),
+    ...data.frontends.map(f => ({
+      name: f.name,
+      pid: f.pid ?? 0,
+      startedAt: '',
+      running: f.status === 'running',
+    })),
+  ].filter(p => p.pid > 0);
 
-  const portForwards = Object.entries(state.ports)
-    .filter(([name]) => config.services.some(s => s.name === name && s.portForward))
-    .map(([name, port]) => ({
-      service: name,
-      port,
-      healthy: true, // Port forwards are assumed healthy if state exists
+  const portForwards = data.services
+    .filter(s => s.port)
+    .map(s => ({
+      service: s.name,
+      port: s.port!,
+      healthy: s.status === 'running',
     }));
 
-  // Determine overall state
-  const allRunning = processes.every(p => p.running);
-  const overallState: DashboardData['state'] = processes.length === 0
-    ? 'healthy'
-    : allRunning
-      ? 'healthy'
-      : processes.some(p => p.running)
-        ? 'degraded'
-        : 'error';
+  const urls: Record<string, string> = {};
+  for (const s of data.services) {
+    if (s.url) urls[s.name] = s.url;
+  }
+  for (const f of data.frontends) {
+    if (f.url) urls[f.name] = f.url;
+  }
 
-  const dashboardData: DashboardData = {
-    state: overallState,
-    namespace: state.namespace,
-    branch: state.branch,
-    worktreeId: state.worktreeId,
-    lastEnsure: state.lastEnsure,
+  const ports: Record<string, number> = {};
+  for (const s of data.services) {
+    if (s.port) ports[s.name] = s.port;
+  }
+
+  const dashboardData: InternalDashboardData = {
+    state: data.state === 'down' ? 'error' : data.state === 'unknown' ? 'healthy' : data.state as 'healthy' | 'degraded' | 'error',
+    namespace: data.namespace,
+    branch: '',
+    worktreeId: '',
+    lastEnsure: '',
     health: {
-      namespace: state.namespace,
-      healthy: overallState === 'healthy',
-      pods: [], // Would require kubectl call — omit for now
+      namespace: data.namespace,
+      healthy: data.state === 'healthy',
+      pods: [],
     },
     portForwards,
     processes,
-    urls: state.urls,
-    ports: state.ports,
+    urls,
+    ports,
   };
 
   printDashboard(dashboardData);

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
-import { loadConfig } from './config.js';
+import { execSync } from 'child_process';
+import { realpathSync } from 'fs';
+import { repo } from './api/index.js';
+import type { RepoId } from './api/identity.js';
 import { upCommand } from './commands/up.js';
 import { downCommand } from './commands/down.js';
 import { destroyCommand } from './commands/destroy.js';
@@ -57,6 +60,31 @@ Test options:
   `);
 }
 
+/**
+ * Resolve the current repo from cwd. Finds the git root, then looks up
+ * or auto-registers the repo in the registry. Returns a RepoId.
+ */
+async function resolveCurrentRepo(): Promise<RepoId> {
+  // Find git root from cwd
+  let gitRoot: string;
+  try {
+    gitRoot = execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
+    gitRoot = realpathSync(gitRoot);
+  } catch {
+    throw new Error('Not inside a git repository. Run this command from a git repo root.');
+  }
+
+  // Look up in registry
+  const entry = await repo.findByPath(gitRoot);
+  if (entry) {
+    return entry.id;
+  }
+
+  // Auto-register the repo
+  const registered = await repo.add(gitRoot);
+  return registered.id;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -99,7 +127,7 @@ async function main(): Promise<void> {
   }
 
   try {
-    const config = loadConfig();
+    const repoId = await resolveCurrentRepo();
 
     switch (command) {
       case 'up': {
@@ -107,32 +135,32 @@ async function main(): Promise<void> {
           frontend: args.includes('--frontend') ? args[args.indexOf('--frontend') + 1] : undefined,
           all: args.includes('--all'),
         };
-        await upCommand(config, options);
+        await upCommand(repoId, options);
         break;
       }
 
       case 'down': {
-        await downCommand(config);
+        await downCommand(repoId);
         break;
       }
 
       case 'destroy': {
-        await destroyCommand(config);
+        await destroyCommand(repoId);
         break;
       }
 
       case 'status': {
-        await statusCommand(config);
+        await statusCommand(repoId);
         break;
       }
 
       case 'watch': {
-        await watchCommand(config);
+        await watchCommand(repoId);
         break;
       }
 
       case 'prune': {
-        await pruneCommand(config);
+        await pruneCommand(repoId);
         break;
       }
 
@@ -142,22 +170,22 @@ async function main(): Promise<void> {
           printError('Please specify a service name');
           process.exit(1);
         }
-        await logsCommand(config, serviceName, args.slice(2));
+        await logsCommand(repoId, serviceName, args.slice(2));
         break;
       }
 
       case 'test': {
-        await testCommand(config, args.slice(1));
+        await testCommand(repoId, args.slice(1));
         break;
       }
 
       case 'shell': {
-        await shellCommand(config, args[1]);
+        await shellCommand(repoId, args[1]);
         break;
       }
 
       case 'reload': {
-        await reloadCommand(config, args[1]);
+        await reloadCommand(repoId, args[1]);
         break;
       }
 

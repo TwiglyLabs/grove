@@ -1,11 +1,12 @@
-import type { GroveConfig } from '../config.js';
-import type { TestOptions, TestPlatform } from '../types.js';
-import { runTests } from '../testing/test-runner.js';
+import type { RepoId } from '../api/identity.js';
+import type { TestPlatform } from '../types.js';
+import { runTests } from '../api/testing.js';
+import { load as loadConfig } from '../api/config.js';
 import { printError, printTestResult, printTestFailures } from '../output.js';
 
-function parseTestArgs(args: string[]): { platform: TestPlatform | undefined; options: Omit<TestOptions, 'platform'>; json?: boolean } {
+function parseTestArgs(args: string[]): { platform: TestPlatform | undefined; options: Record<string, unknown>; json?: boolean } {
   const platform = args[0] as TestPlatform | undefined;
-  const options: Omit<TestOptions, 'platform'> = {};
+  const options: Record<string, unknown> = {};
   let json = false;
 
   for (let i = 1; i < args.length; i++) {
@@ -14,7 +15,7 @@ function parseTestArgs(args: string[]): { platform: TestPlatform | undefined; op
       options.suite = args[++i];
     } else if (arg === '--flow' && args[i + 1]) {
       if (!options.flow) options.flow = [];
-      options.flow.push(args[++i]);
+      (options.flow as string[]).push(args[++i]);
     } else if (arg === '--file' && args[i + 1]) {
       options.file = args[++i];
     } else if (arg === '--grep' && args[i + 1]) {
@@ -39,7 +40,7 @@ function parseTestArgs(args: string[]): { platform: TestPlatform | undefined; op
   return { platform, options, json };
 }
 
-export async function testCommand(config: GroveConfig, args: string[]): Promise<void> {
+export async function testCommand(repoId: RepoId, args: string[]): Promise<void> {
   const { platform, options, json } = parseTestArgs(args);
 
   if (!platform || !['mobile', 'webapp', 'api'].includes(platform)) {
@@ -61,6 +62,7 @@ export async function testCommand(config: GroveConfig, args: string[]): Promise<
   }
 
   // Validate platform exists in config
+  const config = await loadConfig(repoId);
   if (platform === 'mobile' && !config.testing?.mobile) {
     printError('No mobile testing configuration in .grove.yaml');
     process.exit(1);
@@ -74,7 +76,19 @@ export async function testCommand(config: GroveConfig, args: string[]): Promise<
     process.exit(1);
   }
 
-  const result = await runTests(config, { platform, ...options });
+  const result = await runTests(repoId, {
+    platform,
+    suite: options.suite as string | undefined,
+    flow: options.flow as string[] | undefined,
+    file: options.file as string | undefined,
+    grep: options.grep as string | undefined,
+    useDev: options.useDev as boolean | undefined,
+    ai: options.ai as boolean | undefined,
+    excludeAi: options.excludeAi as boolean | undefined,
+    noEnsure: options.noEnsure as boolean | undefined,
+    timeout: options.timeout as number | undefined,
+    verbose: options.verbose as boolean | undefined,
+  });
 
   if (json) {
     console.log(JSON.stringify(result, null, 2));

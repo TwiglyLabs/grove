@@ -1,25 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before imports
-vi.mock('child_process', () => ({
-  spawn: vi.fn(),
-  execSync: vi.fn(),
+vi.mock('../api/shell.js', () => ({
+  getShellCommand: vi.fn(),
 }));
 
-vi.mock('../state.js', () => ({
-  readState: vi.fn(),
+vi.mock('../api/config.js', () => ({
+  load: vi.fn(),
+}));
+
+vi.mock('child_process', () => ({
+  spawn: vi.fn(),
 }));
 
 vi.mock('../output.js', () => ({
   printError: vi.fn(),
 }));
 
-import { spawn, execSync } from 'child_process';
+import { spawn } from 'child_process';
 import { shellCommand } from './shell.js';
-import { readState } from '../state.js';
+import { getShellCommand } from '../api/shell.js';
+import { load as loadConfig } from '../api/config.js';
 import { printError } from '../output.js';
 import { ExitError, mockProcessExit } from '../testing/test-helpers.js';
+import { EnvironmentNotRunningError, PodNotFoundError } from '../api/errors.js';
+import { asRepoId } from '../api/identity.js';
 import type { GroveConfig } from '../config.js';
+
+const testRepoId = asRepoId('repo_test123');
 
 const mockConfig = {
   project: { name: 'test-app', cluster: 'test-cluster' },
@@ -36,155 +44,103 @@ const mockConfig = {
   portBlockSize: 5,
 } as unknown as GroveConfig;
 
-const mockState = {
-  namespace: 'test-app-main',
-  branch: 'main',
-  worktreeId: 'main',
-  ports: {},
-  urls: {},
-  processes: {},
-  lastEnsure: new Date().toISOString(),
-};
-
 describe('shellCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockProcessExit();
+    vi.mocked(loadConfig).mockResolvedValue(mockConfig);
   });
 
   it('prints error when no service specified', async () => {
-    await expect(shellCommand(mockConfig, undefined)).rejects.toThrow(ExitError);
+    await expect(shellCommand(testRepoId, undefined)).rejects.toThrow(ExitError);
 
     expect(printError).toHaveBeenCalledWith('Usage: grove shell <service>');
   });
 
   it('prints error for unknown service', async () => {
-    await expect(shellCommand(mockConfig, 'database')).rejects.toThrow(ExitError);
+    vi.mocked(getShellCommand).mockRejectedValue(new Error('Unknown shell target: database'));
+
+    await expect(shellCommand(testRepoId, 'database')).rejects.toThrow(ExitError);
 
     expect(printError).toHaveBeenCalledWith('Unknown service: database');
   });
 
   it('prints error when environment not running', async () => {
-    vi.mocked(readState).mockReturnValue(null);
+    vi.mocked(getShellCommand).mockRejectedValue(new EnvironmentNotRunningError());
 
-    await expect(shellCommand(mockConfig, 'api')).rejects.toThrow(ExitError);
+    await expect(shellCommand(testRepoId, 'api')).rejects.toThrow(ExitError);
 
     expect(printError).toHaveBeenCalledWith('Dev environment not running. Run `grove up` first.');
   });
 
-  it('uses default pod selector when not specified', async () => {
-    vi.mocked(readState).mockReturnValue(mockState);
-    vi.mocked(execSync).mockReturnValue('api-pod-abc123');
+  it('prints error when no pod found', async () => {
+    vi.mocked(getShellCommand).mockRejectedValue(new PodNotFoundError('api'));
+
+    await expect(shellCommand(testRepoId, 'api')).rejects.toThrow(ExitError);
+
+    expect(printError).toHaveBeenCalledWith('No running pod found for api');
+  });
+
+  it('spawns kubectl with correct command', async () => {
+    const mockCmd = {
+      command: 'kubectl',
+      args: ['exec', '-it', 'api-pod-abc123', '-n', 'test-app-main', '--', '/bin/sh'],
+    };
+    vi.mocked(getShellCommand).mockResolvedValue(mockCmd);
 
     const mockProc = { on: vi.fn() };
     vi.mocked(spawn).mockReturnValue(mockProc as any);
 
     // Don't await — the promise never resolves
-    shellCommand(mockConfig, 'api');
+    shellCommand(testRepoId, 'api');
 
     // Wait a tick for the sync code to execute
     await new Promise(r => setTimeout(r, 10));
 
-    expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining('-l app=api'),
-      expect.any(Object)
-    );
+    expect(spawn).toHaveBeenCalledWith('kubectl', mockCmd.args, { stdio: 'inherit' });
   });
 
-  it('uses custom pod selector when specified', async () => {
-    vi.mocked(readState).mockReturnValue(mockState);
-    vi.mocked(execSync).mockReturnValue('auth-pod-abc123');
+  it('calls getShellCommand with correct params', async () => {
+    const mockCmd = {
+      command: 'kubectl',
+      args: ['exec', '-it', 'auth-pod-abc123', '-n', 'test-app-main', '--', '/bin/sh'],
+    };
+    vi.mocked(getShellCommand).mockResolvedValue(mockCmd);
 
     const mockProc = { on: vi.fn() };
     vi.mocked(spawn).mockReturnValue(mockProc as any);
 
-    shellCommand(mockConfig, 'auth');
+    shellCommand(testRepoId, 'auth');
     await new Promise(r => setTimeout(r, 10));
 
-    expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining('-l component=auth-server'),
-      expect.any(Object)
-    );
+    expect(getShellCommand).toHaveBeenCalledWith(testRepoId, 'auth');
   });
 
-  it('uses default shell /bin/sh when not specified', async () => {
-    vi.mocked(readState).mockReturnValue(mockState);
-    vi.mocked(execSync).mockReturnValue('api-pod-abc123');
+  it('shows available services when no service specified', async () => {
+    let logged: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
 
-    const mockProc = { on: vi.fn() };
-    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    await expect(shellCommand(testRepoId, undefined)).rejects.toThrow(ExitError);
 
-    shellCommand(mockConfig, 'api');
-    await new Promise(r => setTimeout(r, 10));
-
-    expect(spawn).toHaveBeenCalledWith(
-      'kubectl',
-      expect.arrayContaining(['--', '/bin/sh']),
-      expect.any(Object)
-    );
+    expect(logged.some(l => l.includes('api'))).toBe(true);
+    expect(logged.some(l => l.includes('auth'))).toBe(true);
+    expect(logged.some(l => l.includes('worker'))).toBe(true);
   });
 
-  it('uses custom shell when specified', async () => {
-    vi.mocked(readState).mockReturnValue(mockState);
-    vi.mocked(execSync).mockReturnValue('worker-pod-abc123');
+  it('shows available services on unknown service error', async () => {
+    vi.mocked(getShellCommand).mockRejectedValue(new Error('Unknown shell target: database'));
 
-    const mockProc = { on: vi.fn() };
-    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    let logged: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
 
-    shellCommand(mockConfig, 'worker');
-    await new Promise(r => setTimeout(r, 10));
+    await expect(shellCommand(testRepoId, 'database')).rejects.toThrow(ExitError);
 
-    expect(spawn).toHaveBeenCalledWith(
-      'kubectl',
-      expect.arrayContaining(['--', '/bin/bash']),
-      expect.any(Object)
-    );
-  });
-
-  it('passes correct namespace to kubectl', async () => {
-    vi.mocked(readState).mockReturnValue(mockState);
-    vi.mocked(execSync).mockReturnValue('api-pod-abc123');
-
-    const mockProc = { on: vi.fn() };
-    vi.mocked(spawn).mockReturnValue(mockProc as any);
-
-    shellCommand(mockConfig, 'api');
-    await new Promise(r => setTimeout(r, 10));
-
-    expect(execSync).toHaveBeenCalledWith(
-      expect.stringContaining('-n test-app-main'),
-      expect.any(Object)
-    );
-  });
-
-  it('prints error when no pod found', async () => {
-    vi.mocked(readState).mockReturnValue(mockState);
-    vi.mocked(execSync).mockReturnValue('');
-
-    await expect(shellCommand(mockConfig, 'api')).rejects.toThrow(ExitError);
-
-    expect(printError).toHaveBeenCalledWith('No running pod found for api');
-  });
-
-  it('handles config with no shellTargets', async () => {
-    const configNoTargets = {
-      ...mockConfig,
-      utilities: {},
-    } as unknown as GroveConfig;
-
-    await expect(shellCommand(configNoTargets, 'api')).rejects.toThrow(ExitError);
-
-    expect(printError).toHaveBeenCalledWith('Unknown service: api');
-  });
-
-  it('handles config with no utilities section', async () => {
-    const configNoUtils = {
-      ...mockConfig,
-      utilities: undefined,
-    } as unknown as GroveConfig;
-
-    await expect(shellCommand(configNoUtils, 'api')).rejects.toThrow(ExitError);
-
-    expect(printError).toHaveBeenCalledWith('Unknown service: api');
+    expect(logged.some(l => l.includes('api'))).toBe(true);
+    expect(logged.some(l => l.includes('auth'))).toBe(true);
+    expect(logged.some(l => l.includes('worker'))).toBe(true);
   });
 });

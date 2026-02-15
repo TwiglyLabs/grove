@@ -1,21 +1,22 @@
-import { existsSync, readFileSync } from 'fs';
 import { spawn } from 'child_process';
-import { join } from 'path';
-import type { GroveConfig } from '../config.js';
+import type { RepoId } from '../api/identity.js';
+import { readLogs } from '../api/logs.js';
+import { load as loadConfig } from '../api/config.js';
 import { readState } from '../state.js';
 import { printWarning, printError } from '../output.js';
 
-export async function logsCommand(config: GroveConfig, serviceName: string, args: string[] = []): Promise<void> {
+export async function logsCommand(repoId: RepoId, serviceName: string, args: string[] = []): Promise<void> {
   const isPod = args.includes('--pod');
 
-  const state = readState(config);
-  if (!state) {
-    printWarning('No state file found - environment is not running');
-    return;
-  }
-
   if (isPod) {
-    // kubectl logs mode
+    // kubectl logs mode — need namespace from state
+    const config = await loadConfig(repoId);
+    const state = readState(config);
+    if (!state) {
+      printWarning('No state file found - environment is not running');
+      return;
+    }
+
     console.log(`Tailing logs for ${serviceName} in ${state.namespace}...`);
     console.log('(Ctrl+C to stop)');
     console.log('');
@@ -41,23 +42,12 @@ export async function logsCommand(config: GroveConfig, serviceName: string, args
   }
 
   // File-based logs (default)
-  const logsDir = join(config.repoRoot, '.grove', 'logs');
-  const portForwardLog = join(logsDir, `port-forward-${serviceName}.log`);
-  const frontendLog = join(logsDir, `${serviceName}.log`);
+  const entry = await readLogs(repoId, serviceName);
 
-  let logFile: string | null = null;
-
-  if (existsSync(portForwardLog)) {
-    logFile = portForwardLog;
-  } else if (existsSync(frontendLog)) {
-    logFile = frontendLog;
-  }
-
-  if (!logFile) {
+  if (!entry) {
     printError(`No logs found for service: ${serviceName}`);
     return;
   }
 
-  const content = readFileSync(logFile, 'utf-8');
-  console.log(content);
+  console.log(entry.content);
 }

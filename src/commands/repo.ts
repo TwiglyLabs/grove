@@ -1,8 +1,7 @@
 import { execSync } from 'child_process';
 import { realpathSync } from 'fs';
 import { basename, resolve } from 'path';
-import { addRepo, removeRepo } from '../repo/state.js';
-import { listRepos } from '../repo/list.js';
+import { repo } from '../api/index.js';
 import { printSuccess, printError, printInfo, jsonSuccess, jsonError } from '../output.js';
 
 interface RepoContext {
@@ -72,17 +71,23 @@ async function handleAdd(args: string[], ctx: RepoContext): Promise<void> {
       );
     }
 
-    const name = basename(resolvedToplevel);
-    const result = await addRepo(name, resolvedToplevel);
+    // Check if already registered
+    const existing = await repo.findByPath(resolvedToplevel);
+    if (existing) {
+      if (ctx.json) {
+        jsonSuccess({ name: existing.name, path: existing.path, alreadyRegistered: true });
+      } else {
+        printInfo(`Already registered: ${existing.name} (${existing.path})`);
+      }
+      return;
+    }
+
+    const result = await repo.add(resolvedToplevel);
 
     if (ctx.json) {
-      jsonSuccess({ name: result.name, path: result.path, alreadyRegistered: result.alreadyRegistered });
+      jsonSuccess({ name: result.name, path: result.path, alreadyRegistered: false });
     } else {
-      if (result.alreadyRegistered) {
-        printInfo(`Already registered: ${result.name} (${result.path})`);
-      } else {
-        printSuccess(`Registered repo: ${result.name} (${result.path})`);
-      }
+      printSuccess(`Registered repo: ${result.name} (${result.path})`);
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -99,7 +104,14 @@ async function handleRemove(args: string[], ctx: RepoContext): Promise<void> {
   }
 
   try {
-    await removeRepo(name);
+    // Look up by name — find the entry with matching name
+    const entries = await repo.list();
+    const entry = entries.find(e => e.name === name);
+    if (!entry) {
+      throw new Error(`Repo not found: ${name}`);
+    }
+
+    await repo.remove(entry.id);
     if (ctx.json) {
       jsonSuccess({ name });
     } else {
@@ -113,20 +125,28 @@ async function handleRemove(args: string[], ctx: RepoContext): Promise<void> {
 
 async function handleList(ctx: RepoContext): Promise<void> {
   try {
-    const result = await listRepos();
+    const entries = await repo.list();
     if (ctx.json) {
-      jsonSuccess(result);
+      // Maintain backwards-compatible JSON format
+      jsonSuccess({
+        repos: entries.map(e => ({
+          name: e.name,
+          path: e.path,
+          exists: e.exists,
+          workspaces: Array(e.workspaceCount).fill(null).map(() => ({})),
+        })),
+      });
     } else {
-      if (result.repos.length === 0) {
+      if (entries.length === 0) {
         printInfo('No repos registered. Use `grove repo add` to register a repo.');
         return;
       }
-      for (const repo of result.repos) {
-        const stale = repo.exists ? '' : ' [MISSING]';
-        const wsCount = repo.workspaces.length > 0
-          ? ` (${repo.workspaces.length} workspace${repo.workspaces.length === 1 ? '' : 's'})`
+      for (const entry of entries) {
+        const stale = entry.exists ? '' : ' [MISSING]';
+        const wsCount = entry.workspaceCount > 0
+          ? ` (${entry.workspaceCount} workspace${entry.workspaceCount === 1 ? '' : 's'})`
           : '';
-        console.log(`  ${repo.name}  ${repo.path}${stale}${wsCount}`);
+        console.log(`  ${entry.name}  ${entry.path}${stale}${wsCount}`);
       }
     }
   } catch (error) {
