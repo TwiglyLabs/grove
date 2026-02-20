@@ -13,7 +13,7 @@ vi.mock('os', async () => {
   };
 });
 
-const { add } = await import('./repo.js');
+const { add } = await import('../repo/api.js');
 const { readLogs } = await import('./logs.js');
 
 function createRepoDir(name: string, groveYaml?: string): string {

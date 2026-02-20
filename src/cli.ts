@@ -8,7 +8,7 @@
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { realpathSync } from 'fs';
-import { repo } from './api/index.js';
+import * as repo from './repo/api.js';
 import type { RepoId } from './shared/identity.js';
 import { printError } from './shared/output.js';
 
@@ -25,7 +25,7 @@ import { logsCommand } from './commands/logs.js';
 import { testCommand } from './commands/test.js';
 import { shellCommand } from './commands/shell.js';
 import { workspaceCommand } from './commands/workspace.js';
-import { repoCommand } from './commands/repo.js';
+import { repoCommand } from './repo/cli.js';
 import { requestCommand } from './commands/request.js';
 
 /**

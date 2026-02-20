@@ -1,5 +1,5 @@
 /**
- * Grove API: Repo module
+ * Repo slice — public API
  *
  * Manages the global repo registry. The registry is the source of truth
  * for RepoId → path mapping. All API functions that reference repos
@@ -11,7 +11,7 @@ import {
   readRegistry,
   addRepo as internalAddRepo,
   removeRepo as internalRemoveRepo,
-} from '../repo/state.js';
+} from './state.js';
 import { listWorkspaceStates } from '../workspace/state.js';
 import type { RepoId } from '../shared/identity.js';
 import { asRepoId } from '../shared/identity.js';

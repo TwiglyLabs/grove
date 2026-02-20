@@ -13,7 +13,7 @@ vi.mock('os', async () => {
   };
 });
 
-const { add } = await import('../api/repo.js');
+const { add } = await import('../repo/api.js');
 const { load, loadWorkspaceConfig } = await import('./config.js');
 const { ConfigNotFoundError, ConfigValidationError, RepoNotFoundError } = await import('./errors.js');
 const { asRepoId } = await import('./identity.js');

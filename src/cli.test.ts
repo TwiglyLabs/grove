@@ -19,11 +19,9 @@ vi.mock('fs', async () => {
 });
 
 // Mock repo API (findByPath/add used in resolveCurrentRepo)
-vi.mock('./api/index.js', () => ({
-  repo: {
-    findByPath: vi.fn(),
-    add: vi.fn(),
-  },
+vi.mock('./repo/api.js', () => ({
+  findByPath: vi.fn(),
+  add: vi.fn(),
 }));
 
 // Mock output (printError used in handleError)
@@ -43,13 +41,13 @@ vi.mock('./commands/test.js', () => ({ testCommand: vi.fn() }));
 vi.mock('./commands/shell.js', () => ({ shellCommand: vi.fn() }));
 vi.mock('./commands/reload.js', () => ({ reloadCommand: vi.fn() }));
 vi.mock('./commands/workspace.js', () => ({ workspaceCommand: vi.fn() }));
-vi.mock('./commands/repo.js', () => ({ repoCommand: vi.fn() }));
+vi.mock('./repo/cli.js', () => ({ repoCommand: vi.fn() }));
 vi.mock('./commands/request.js', () => ({ requestCommand: vi.fn() }));
 
 import { resolveCurrentRepo, program } from './cli.js';
 import { execSync } from 'child_process';
 import { realpathSync } from 'fs';
-import { repo } from './api/index.js';
+import * as repo from './repo/api.js';
 import { isRepoId } from './shared/identity.js';
 
 describe('resolveCurrentRepo', () => {

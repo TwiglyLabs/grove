@@ -1,6 +1,6 @@
 ---
 title: 'Repo Slice: Registry Management'
-status: not_started
+status: done
 depends_on:
   - foundation
 description: >-
@@ -9,6 +9,7 @@ description: >-
 tags:
   - slice
 not_started_at: '2026-02-20T05:15:41.236Z'
+completed_at: '2026-02-20T23:50:18.759Z'
 ---
 
 ## Problem

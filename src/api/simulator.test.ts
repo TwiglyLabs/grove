@@ -13,7 +13,7 @@ vi.mock('os', async () => {
   };
 });
 
-const { add } = await import('./repo.js');
+const { add } = await import('../repo/api.js');
 const { connectMetro, cloneSimulator } = await import('./simulator.js');
 const { EnvironmentNotRunningError } = await import('../shared/errors.js');
 

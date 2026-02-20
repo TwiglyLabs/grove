@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import * as lockfile from 'proper-lockfile';
-import { RepoRegistry, type RepoEntry } from './types.js';
+import { RepoRegistry, type RepoEntryOnDisk } from './types.js';
 import { createRepoId } from '../shared/identity.js';
 
 export function getRegistryDir(): string {
@@ -106,7 +106,7 @@ export async function addRepo(name: string, path: string): Promise<AddResult> {
     );
   }
 
-  const entry: RepoEntry = {
+  const entry: RepoEntryOnDisk = {
     id: createRepoId(),
     name,
     path,

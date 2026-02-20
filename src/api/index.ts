@@ -34,6 +34,9 @@ export type {
 export type { RepoId, WorkspaceId } from '../shared/identity.js';
 export { isRepoId, asRepoId, asWorkspaceId } from '../shared/identity.js';
 
+// Repo types (re-exported from repo slice)
+export type { RepoEntry, RepoListEntry } from '../repo/types.js';
+
 // Public types
 export type {
   // Environment
@@ -44,9 +47,6 @@ export type {
   DashboardData,
   WatchHandle,
   PruneResult,
-  // Repo
-  RepoEntry,
-  RepoListEntry,
   // Workspace
   CreateOptions,
   CreateResult,
@@ -79,7 +79,7 @@ export type {
 } from './types.js';
 
 // API modules (namespace imports)
-import * as repo from './repo.js';
+import * as repo from '../repo/api.js';
 import * as config from '../shared/config.js';
 import * as workspace from './workspace.js';
 import * as request from './request.js';

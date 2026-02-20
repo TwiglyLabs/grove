@@ -19,7 +19,7 @@ import {
 import type { WorkspaceState } from '../workspace/types.js';
 import type { RepoId, WorkspaceId } from '../shared/identity.js';
 import { asWorkspaceId } from '../shared/identity.js';
-import { resolveRepoPath } from './repo.js';
+import { resolveRepoPath } from '../repo/api.js';
 import { WorkspaceNotFoundError, ConflictError } from '../shared/errors.js';
 import type {
   CreateOptions,

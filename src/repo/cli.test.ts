@@ -6,7 +6,7 @@ import { tmpdir } from 'os';
 import { execSync } from 'child_process';
 
 // Resolve symlinks (macOS /var -> /private/var) so paths match git's toplevel
-const rawTestDir = join(tmpdir(), `grove-repo-cmd-test-${process.pid}`);
+const rawTestDir = join(tmpdir(), `grove-repo-cli-test-${process.pid}`);
 mkdirSync(rawTestDir, { recursive: true });
 const testDir = realpathSync(rawTestDir);
 
@@ -18,7 +18,7 @@ vi.mock('os', async () => {
   };
 });
 
-const { repoCommand } = await import('./repo.js');
+const { repoCommand } = await import('./cli.js');
 
 function createGitRepo(name: string): string {
   const repoPath = join(testDir, name);

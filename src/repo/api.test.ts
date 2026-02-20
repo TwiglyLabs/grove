@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-const testDir = join(tmpdir(), `grove-api-repo-test-${process.pid}`);
+const testDir = join(tmpdir(), `grove-repo-api-test-${process.pid}`);
 
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os');
@@ -13,7 +13,7 @@ vi.mock('os', async () => {
   };
 });
 
-const { add, remove, get, list, findByPath } = await import('./repo.js');
+const { add, remove, get, list, findByPath } = await import('./api.js');
 const { RepoNotFoundError } = await import('../shared/errors.js');
 const { isRepoId } = await import('../shared/identity.js');
 

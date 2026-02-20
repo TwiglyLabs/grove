@@ -1,7 +1,13 @@
+/**
+ * Repo slice — CLI subcommand
+ *
+ * Commander subcommand for `grove repo` with add, remove, list operations.
+ */
+
 import { execSync } from 'child_process';
 import { realpathSync } from 'fs';
-import { basename, resolve } from 'path';
-import { repo } from '../api/index.js';
+import { resolve } from 'path';
+import * as repo from './api.js';
 import { printSuccess, printError, printInfo, jsonSuccess, jsonError } from '../shared/output.js';
 
 interface RepoContext {

@@ -27,20 +27,6 @@ export type {
   PruneResult,
 } from '../environment/types.js';
 
-// --- Repo types ---
-
-export interface RepoEntry {
-  id: RepoId;
-  name: string;
-  path: string;
-  addedAt: string;
-}
-
-export interface RepoListEntry extends RepoEntry {
-  exists: boolean;
-  workspaceCount: number;
-}
-
 // --- Workspace types ---
 
 export interface CreateOptions {
