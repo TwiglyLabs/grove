@@ -4,76 +4,46 @@ import { join } from 'path';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
-// --- Schema fragments ---
-// Each fragment will migrate to its owning slice. The root config
-// composes them into GroveConfigSchema.
+// --- Environment slice schemas (imported from owning slice) ---
+import {
+  BootstrapCheckSchema,
+  BootstrapFixSchema,
+  BootstrapStepSchema,
+  ServiceBuildSchema,
+  PortForwardSchema,
+  HealthCheckSchema,
+  ServiceSchema,
+  FrontendSchema,
+  ProjectSchema,
+  HelmSchema,
+  ReloadTargetsSchema,
+} from './environment/config.js';
 
-// → environment-slice (bootstrap is part of environment setup)
-export const BootstrapCheckSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('fileExists'),
-    path: z.string(),
-  }),
-  z.object({
-    type: z.literal('dirExists'),
-    path: z.string(),
-  }),
-  z.object({
-    type: z.literal('commandSucceeds'),
-    command: z.string(),
-  }),
-]);
+// Re-export environment schemas for consumers
+export {
+  BootstrapCheckSchema,
+  BootstrapFixSchema,
+  BootstrapStepSchema,
+  ServiceBuildSchema,
+  PortForwardSchema,
+  HealthCheckSchema,
+  ServiceSchema,
+  FrontendSchema,
+};
 
-export const BootstrapFixSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('copyFrom'),
-    source: z.string(),
-    dest: z.string(),
-  }),
-  z.object({
-    type: z.literal('run'),
-    command: z.string(),
-  }),
-]);
+// Re-export environment types
+export type {
+  BootstrapCheck,
+  BootstrapFix,
+  BootstrapStep,
+  ServiceBuild,
+  PortForward,
+  HealthCheck,
+  Service,
+  Frontend,
+} from './environment/config.js';
 
-export const BootstrapStepSchema = z.object({
-  name: z.string(),
-  check: BootstrapCheckSchema,
-  fix: BootstrapFixSchema,
-});
-
-// → environment-slice (services are deployed by environment)
-export const ServiceBuildSchema = z.object({
-  image: z.string(),
-  dockerfile: z.string(),
-  watchPaths: z.array(z.string()).optional(),
-});
-
-export const PortForwardSchema = z.object({
-  remotePort: z.number(),
-  hostIp: z.string().optional().default('127.0.0.1'),
-});
-
-export const HealthCheckSchema = z.object({
-  path: z.string().optional(),
-  protocol: z.enum(['http', 'tcp']).default('http'),
-});
-
-export const ServiceSchema = z.object({
-  name: z.string(),
-  build: ServiceBuildSchema.optional(),
-  portForward: PortForwardSchema.optional(),
-  health: HealthCheckSchema.optional(),
-});
-
-// → environment-slice (frontends are started by environment)
-export const FrontendSchema = z.object({
-  name: z.string(),
-  command: z.string(),
-  cwd: z.string(),
-  env: z.record(z.string()).optional(),
-  health: HealthCheckSchema.optional(),
-});
+// --- Satellite slice schemas (remain in root until slices own them) ---
 
 // → satellite-slices (testing)
 export const TestSuiteSchema = z.object({
@@ -129,7 +99,7 @@ export const ShellTargetSchema = z.object({
 
 export const UtilitiesSchema = z.object({
   shellTargets: z.array(ShellTargetSchema).optional(),
-  reloadTargets: z.array(z.string()).optional(),
+  reloadTargets: ReloadTargetsSchema,
 });
 
 // → workspace-slice
@@ -144,18 +114,9 @@ export const WorkspaceConfigSchema = z.object({
 
 // --- Composed root schema ---
 // Assembles domain fragments into the full config shape.
-// Each fragment will eventually be imported from its owning slice.
 export const GroveConfigSchema = z.object({
-  project: z.object({
-    name: z.string(),
-    cluster: z.string().default('twiglylabs-local'),
-  }),
-  helm: z.object({
-    chart: z.string(),
-    release: z.string(),
-    valuesFiles: z.array(z.string()),
-    secretsTemplate: z.string().optional(),
-  }),
+  project: ProjectSchema,
+  helm: HelmSchema,
   services: z.array(ServiceSchema),
   frontends: z.array(FrontendSchema).optional(),
   bootstrap: z.array(BootstrapStepSchema).optional(),
@@ -165,14 +126,6 @@ export const GroveConfigSchema = z.object({
   workspace: WorkspaceConfigSchema.optional(),
 });
 
-export type BootstrapCheck = z.infer<typeof BootstrapCheckSchema>;
-export type BootstrapFix = z.infer<typeof BootstrapFixSchema>;
-export type BootstrapStep = z.infer<typeof BootstrapStepSchema>;
-export type ServiceBuild = z.infer<typeof ServiceBuildSchema>;
-export type PortForward = z.infer<typeof PortForwardSchema>;
-export type HealthCheck = z.infer<typeof HealthCheckSchema>;
-export type Service = z.infer<typeof ServiceSchema>;
-export type Frontend = z.infer<typeof FrontendSchema>;
 export type TestSuite = z.infer<typeof TestSuiteSchema>;
 export type MobileTesting = z.infer<typeof MobileTestingSchema>;
 export type PlatformTesting = z.infer<typeof PlatformTestingSchema>;

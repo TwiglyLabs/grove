@@ -1,4 +1,4 @@
-import type { EnvironmentState } from './state.js';
+import type { EnvironmentState } from './types.js';
 
 /**
  * Resolve template variables in env var values.

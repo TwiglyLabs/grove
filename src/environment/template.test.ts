@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveTemplates } from './template.js';
-import type { EnvironmentState } from './state.js';
+import type { EnvironmentState } from './types.js';
 
 const makeState = (): EnvironmentState => ({
   namespace: 'testapp-test-branch',

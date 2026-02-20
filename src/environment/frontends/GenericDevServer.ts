@@ -1,8 +1,8 @@
 import { spawn } from 'child_process';
 import { openSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import type { Frontend } from '../config.js';
-import type { EnvironmentState, ProcessInfo } from '../state.js';
+import type { Frontend } from '../../config.js';
+import type { EnvironmentState, ProcessInfo } from '../types.js';
 import { resolveTemplates } from '../template.js';
 import { checkHealth } from '../health.js';
 

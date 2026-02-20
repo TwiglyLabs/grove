@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import { join } from 'path';
-import type { GroveConfig } from './config.js';
-import type { EnvironmentState } from './state.js';
+import type { GroveConfig } from '../config.js';
+import type { EnvironmentState } from './types.js';
 import { ensureCluster, ensureNamespace } from './cluster.js';
 import { loadOrCreateState, writeState } from './state.js';
 import { runBootstrapChecks } from './bootstrap.js';
@@ -9,13 +9,8 @@ import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
 import { PortForwardProcess } from './processes/PortForwardProcess.js';
 import { GenericDevServer } from './frontends/GenericDevServer.js';
 import { waitForHealth } from './health.js';
-import { printInfo, printSuccess, printError, printSection } from './shared/output.js';
+import { printInfo, printSuccess, printError, printSection } from '../shared/output.js';
 import { Timer } from './timing.js';
-
-export interface UpOptions {
-  frontend?: string;
-  all?: boolean;
-}
 
 async function waitForDeployments(namespace: string, timeoutSeconds: number = 300): Promise<void> {
   printInfo('Waiting for deployments to be ready...');
@@ -60,7 +55,7 @@ async function startPortForwards(config: GroveConfig, state: EnvironmentState): 
   }
 }
 
-async function startFrontends(config: GroveConfig, state: EnvironmentState, options: UpOptions = {}): Promise<void> {
+async function startFrontends(config: GroveConfig, state: EnvironmentState, options: { frontend?: string; all?: boolean } = {}): Promise<void> {
   if (!config.frontends || config.frontends.length === 0) {
     return;
   }
@@ -145,7 +140,7 @@ async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Pro
   }
 }
 
-export async function ensureEnvironment(config: GroveConfig, options: UpOptions = {}): Promise<EnvironmentState> {
+export async function ensureEnvironment(config: GroveConfig, options: { frontend?: string; all?: boolean } = {}): Promise<EnvironmentState> {
   const timer = new Timer();
 
   printSection('Ensuring Cluster');

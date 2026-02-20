@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { openSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import type { ProcessInfo } from '../state.js';
+import type { ProcessInfo } from '../types.js';
 
 export interface PortForwardConfig {
   namespace: string;

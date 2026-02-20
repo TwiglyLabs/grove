@@ -6,7 +6,6 @@
  */
 
 import type { RepoId, WorkspaceId } from '../shared/identity.js';
-import type { EnvironmentState } from '../state.js';
 
 // Re-export identity types
 export type { RepoId, WorkspaceId } from '../shared/identity.js';
@@ -16,60 +15,17 @@ export type { WorkspaceStatus, SyncStatus } from '../workspace/types.js';
 export type { TestPlatform, TestOptions, TestResult, FailureDetail } from '../types.js';
 export type { GroveConfig, WorkspaceConfig } from '../config.js';
 
-// --- Environment types ---
+// --- Environment types (re-exported from environment slice) ---
 
-export interface UpOptions {
-  frontend?: string;
-  all?: boolean;
-  signal?: AbortSignal;
-}
-
-export interface UpResult {
-  state: EnvironmentState;
-  urls: Record<string, string>;
-  ports: Record<string, number>;
-  duration: number;
-}
-
-export interface DownResult {
-  stopped: Array<{ name: string; pid: number; success: boolean }>;
-  notRunning: string[];
-}
-
-export interface DestroyResult {
-  stopped: DownResult;
-  namespaceDeleted: boolean;
-  stateRemoved: boolean;
-}
-
-export interface DashboardData {
-  state: 'healthy' | 'degraded' | 'down' | 'unknown';
-  namespace: string;
-  services: Array<{
-    name: string;
-    status: 'running' | 'stopped' | 'error';
-    port?: number;
-    url?: string;
-    pid?: number;
-  }>;
-  frontends: Array<{
-    name: string;
-    status: 'running' | 'stopped' | 'error';
-    url?: string;
-    pid?: number;
-  }>;
-  uptime?: number;
-}
-
-export interface WatchHandle {
-  stop(): void;
-  reload(service: string): void;
-}
-
-export interface PruneResult {
-  deleted: string[];
-  kept: string[];
-}
+export type {
+  UpOptions,
+  UpResult,
+  DownResult,
+  DestroyResult,
+  DashboardData,
+  WatchHandle,
+  PruneResult,
+} from '../environment/types.js';
 
 // --- Repo types ---
 

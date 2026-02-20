@@ -1,6 +1,6 @@
 ---
 title: 'Environment Slice: K8s Orchestration'
-status: not_started
+status: done
 depends_on:
   - foundation
 description: >-
@@ -9,6 +9,8 @@ description: >-
 tags:
   - slice
 not_started_at: '2026-02-20T05:15:42.029Z'
+started_at: '2026-02-20T23:07:42.792Z'
+completed_at: '2026-02-20T23:38:58.199Z'
 ---
 
 ## Problem

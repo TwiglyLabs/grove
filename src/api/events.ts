@@ -7,31 +7,11 @@
 
 import type { GroveError } from '../shared/errors.js';
 
-export type EnvironmentPhase =
-  | 'cluster'
-  | 'bootstrap'
-  | 'state'
-  | 'namespace'
-  | 'build'
-  | 'deploy'
-  | 'port-forward'
-  | 'frontend'
-  | 'health-check'
-  | 'stopping'
-  | 'destroying';
+// --- Environment events (re-exported from environment slice) ---
 
-export interface EnvironmentEvents {
-  onPhase?(phase: EnvironmentPhase, message: string): void;
-  onProgress?(step: string, detail?: string): void;
-  onServiceStatus?(
-    service: string,
-    status: 'building' | 'deploying' | 'ready' | 'failed' | 'stopping' | 'stopped',
-  ): void;
-  onHealthCheck?(target: string, healthy: boolean): void;
-  onFileChange?(service: string, files: string[]): void;
-  onRebuild?(service: string, phase: 'start' | 'complete' | 'error', error?: string): void;
-  onError?(error: GroveError): void;
-}
+export type { EnvironmentPhase, EnvironmentEvents } from '../environment/types.js';
+
+// --- Non-environment events (remain here until satellite slices own them) ---
 
 export interface WorkspaceEvents {
   onProgress?(step: string, repo?: string, detail?: string): void;

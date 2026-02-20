@@ -1,16 +1,18 @@
 /**
- * Grove API: Environment module
+ * Environment slice public API.
  *
  * Manages dev environments — start, stop, destroy, status, watch, reload, prune.
  * All operations accept RepoId and resolve config/state internally.
  */
 
 import { spawn } from 'child_process';
+import { writeFileSync } from 'fs';
+import { join } from 'path';
 import { load as loadConfig } from '../shared/config.js';
 import type { RepoId } from '../shared/identity.js';
 import { EnvironmentNotRunningError } from '../shared/errors.js';
-import type { EnvironmentEvents } from './events.js';
 import type {
+  EnvironmentEvents,
   UpOptions,
   UpResult,
   DownResult,
@@ -20,11 +22,11 @@ import type {
   PruneResult,
 } from './types.js';
 
-import { ensureEnvironment as internalEnsure } from '../controller.js';
-import { readState as internalReadState, releasePortBlock } from '../state.js';
-import { FileWatcher } from '../watcher.js';
-import { BuildOrchestrator } from '../processes/BuildOrchestrator.js';
-import { Timer } from '../timing.js';
+import { ensureEnvironment as internalEnsure } from './controller.js';
+import { readState as internalReadState, releasePortBlock } from './state.js';
+import { FileWatcher } from './watcher.js';
+import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
+import { Timer } from './timing.js';
 
 function isProcessRunning(pid: number): boolean {
   try {
@@ -255,12 +257,11 @@ export async function watch(
 }
 
 /**
- * Trigger a single service rebuild without an active watch session.
+ * Signal the running watcher to reload a service via .reload-request file.
  */
 export async function reload(
   repo: RepoId,
   service: string,
-  _events?: EnvironmentEvents,
 ): Promise<void> {
   const config = await loadConfig(repo);
   const state = internalReadState(config);
@@ -269,15 +270,7 @@ export async function reload(
     throw new EnvironmentNotRunningError();
   }
 
-  const serviceConfig = config.services.find(s => s.name === service);
-  if (!serviceConfig) {
-    throw new Error(`Service '${service}' not found in config`);
-  }
-
-  const orchestrator = new BuildOrchestrator(config, state);
-  orchestrator.buildService(serviceConfig);
-  orchestrator.loadImageToKind(serviceConfig);
-  orchestrator.helmUpgrade();
+  writeFileSync(join(config.repoRoot, '.reload-request'), service + '\n');
 }
 
 /**
@@ -286,8 +279,6 @@ export async function reload(
 export async function prune(repo: RepoId): Promise<PruneResult> {
   const config = await loadConfig(repo);
 
-  // The internal pruneOrphanedResources() is void and prints output.
-  // We reimplement with structured data return instead.
   const { execSync } = await import('child_process');
   const { existsSync } = await import('fs');
 

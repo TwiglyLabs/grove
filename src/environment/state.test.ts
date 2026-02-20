@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { GroveConfig } from './config.js';
+import type { GroveConfig } from '../config.js';
 
 const { mockExecSync, mockReadFileSync, mockWriteFileSync, mockMkdirSync, mockReaddirSync, mockUnlinkSync, mockExistsSync, mockLockSync, mockLock, mockRelease } = vi.hoisted(() => ({
   mockExecSync: vi.fn(),

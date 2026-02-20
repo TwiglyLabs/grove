@@ -83,7 +83,7 @@ import * as repo from './repo.js';
 import * as config from '../shared/config.js';
 import * as workspace from './workspace.js';
 import * as request from './request.js';
-import * as environment from './environment.js';
+import * as environment from '../environment/api.js';
 import * as testing from './testing.js';
 import * as logs from './logs.js';
 import * as shell from './shell.js';

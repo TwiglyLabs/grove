@@ -1,10 +1,10 @@
 import { watch, type FSWatcher } from 'chokidar';
 import { join } from 'path';
 import { readFileSync, unlinkSync } from 'fs';
-import type { GroveConfig, Service } from './config.js';
-import type { EnvironmentState } from './state.js';
+import type { GroveConfig, Service } from '../config.js';
+import type { EnvironmentState } from './types.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
-import { printInfo, printSuccess } from './shared/output.js';
+import { printInfo, printSuccess } from '../shared/output.js';
 
 export class FileWatcher {
   private watcher: FSWatcher | null = null;

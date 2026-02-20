@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import type { SimulatorConfig } from '../config.js';
-import type { SimulatorState } from '../state.js';
+import type { SimulatorState } from '../environment/types.js';
 import { sanitizeBranchName } from '../sanitize.js';
 
 interface SimctlDevice {

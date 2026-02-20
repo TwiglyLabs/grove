@@ -42,11 +42,11 @@ vi.mock('fs', () => ({
 const mockReadState = vi.fn();
 const mockEnsureEnvironment = vi.fn();
 
-vi.mock('../state.js', () => ({
+vi.mock('../environment/state.js', () => ({
   readState: (...args: any[]) => mockReadState(...args),
 }));
 
-vi.mock('../controller.js', () => ({
+vi.mock('../environment/controller.js', () => ({
   ensureEnvironment: (...args: any[]) => mockEnsureEnvironment(...args),
 }));
 
@@ -54,7 +54,7 @@ vi.mock('../sanitize.js', () => ({
   sanitizeBranchName: vi.fn((b: string) => b.replace(/\//g, '--').toLowerCase()),
 }));
 
-vi.mock('../template.js', () => ({
+vi.mock('../environment/template.js', () => ({
   resolveTemplates: vi.fn((env: Record<string, string>) => env),
 }));
 

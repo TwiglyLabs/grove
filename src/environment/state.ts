@@ -2,31 +2,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFile
 import { join } from 'path';
 import { execSync } from 'child_process';
 import * as lockfile from 'proper-lockfile';
-import type { GroveConfig } from './config.js';
-import { sanitizeBranchName } from './sanitize.js';
-
-export interface ProcessInfo {
-  pid: number;
-  startedAt: string;
-}
-
-export interface SimulatorState {
-  udid: string;
-  name: string;
-  basedOn: string;
-  status: 'booted' | 'shutdown' | 'unknown';
-}
-
-export interface EnvironmentState {
-  namespace: string;
-  branch: string;
-  worktreeId: string;
-  ports: Record<string, number>;
-  urls: Record<string, string>;
-  processes: Record<string, ProcessInfo>;
-  lastEnsure: string;
-  simulator?: SimulatorState;
-}
+import type { GroveConfig } from '../config.js';
+import { sanitizeBranchName } from '../sanitize.js';
+import type { EnvironmentState, ProcessInfo } from './types.js';
 
 const STATE_DIR_NAME = '.grove';
 const PORT_START = 10000;

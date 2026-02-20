@@ -12,16 +12,18 @@ import { repo } from './api/index.js';
 import type { RepoId } from './shared/identity.js';
 import { printError } from './shared/output.js';
 
-import { upCommand } from './commands/up.js';
-import { downCommand } from './commands/down.js';
-import { destroyCommand } from './commands/destroy.js';
-import { statusCommand } from './commands/status.js';
-import { watchCommand } from './commands/watch.js';
-import { pruneCommand } from './commands/prune.js';
+import {
+  upCommand,
+  downCommand,
+  destroyCommand,
+  statusCommand,
+  watchCommand,
+  pruneCommand,
+  reloadCommand,
+} from './environment/cli.js';
 import { logsCommand } from './commands/logs.js';
 import { testCommand } from './commands/test.js';
 import { shellCommand } from './commands/shell.js';
-import { reloadCommand } from './commands/reload.js';
 import { workspaceCommand } from './commands/workspace.js';
 import { repoCommand } from './commands/repo.js';
 import { requestCommand } from './commands/request.js';

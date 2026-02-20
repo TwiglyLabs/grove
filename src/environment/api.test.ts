@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { execSync } from 'child_process';
 import { sanitizeBranchName } from '../sanitize.js';
 
-const testDir = join(tmpdir(), `grove-api-env-test-${process.pid}`);
+const testDir = join(tmpdir(), `grove-env-api-test-${process.pid}`);
 
 function getWorktreeId(): string {
   try {
@@ -24,9 +24,8 @@ vi.mock('os', async () => {
   };
 });
 
-const { add } = await import('./repo.js');
-const { status, down } = await import('./environment.js');
-const { EnvironmentNotRunningError } = await import('../shared/errors.js');
+const { add } = await import('../api/repo.js');
+const { status, down } = await import('./api.js');
 
 function createRepoDir(name: string, groveYaml?: string): string {
   const repoPath = join(testDir, 'repos', name);

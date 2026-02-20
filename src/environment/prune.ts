@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
-import type { GroveConfig } from './config.js';
-import { printInfo, printSuccess, printWarning } from './shared/output.js';
+import type { GroveConfig } from '../config.js';
+import { printInfo, printSuccess, printWarning } from '../shared/output.js';
 
 export function pruneOrphanedResources(config: GroveConfig): void {
   const namespacePrefix = config.project.name;
