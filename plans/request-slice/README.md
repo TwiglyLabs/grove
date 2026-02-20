@@ -1,12 +1,12 @@
 ---
 title: 'Request Slice: Cross-Repo Plan Requests'
-status: draft
+status: not_started
 depends_on:
   - repo-slice
-description: >-
-  Migrate cross-repo request logic into self-contained vertical slice
+description: Migrate cross-repo request logic into self-contained vertical slice
 tags:
   - slice
+not_started_at: '2026-02-20T05:15:42.610Z'
 ---
 
 ## Problem

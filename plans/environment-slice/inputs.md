@@ -3,19 +3,22 @@
 - **foundation** — directory layout (`src/environment/` exists), shared errors, shared output helpers, commander CLI skeleton, config compositor pattern
 
 ## From existing code
-
 - `src/controller.ts` — `ensureEnvironment()` orchestration
-- `src/state.ts` — `EnvironmentState`, port allocation, state file I/O, locking
+- `src/state.ts` + `src/state.test.ts` — `EnvironmentState`, port allocation, state file I/O, locking
 - `src/cluster.ts` — kind cluster management
 - `src/bootstrap.ts` — bootstrap checks and fixes
 - `src/health.ts` — health check polling
-- `src/watcher.ts` — file watching
+- `src/watcher.ts` + `src/commands/watch.test.ts` — file watching
 - `src/prune.ts` — orphaned resource cleanup
 - `src/timing.ts` — timer utility
+- `src/template.ts` + `src/template.test.ts` — env var template resolution (`{{ports.X}}`, `{{urls.X}}`)
 - `src/processes/BuildOrchestrator.ts` — docker build and helm deploy
 - `src/processes/PortForwardProcess.ts` — kubectl port-forward management
 - `src/frontends/GenericDevServer.ts` — frontend dev server management
-- `src/config.ts` — project, helm, services, frontends, bootstrap zod schemas
+- `src/config.ts` — project, helm, services, frontends, bootstrap zod schemas; reloadTargets from utilities
 - `src/commands/up.ts`, `down.ts`, `destroy.ts`, `status.ts`, `watch.ts`, `prune.ts` — CLI commands
-- `src/api/environment.ts` — current public API wrapper
+- `src/commands/reload.ts` + `src/commands/reload.test.ts` — reload command (signals watcher via `.reload-request`)
+- `src/api/environment.ts` + `src/api/environment.test.ts` — current public API wrapper
+- `src/api/events.ts` — `EnvironmentEvents`, `EnvironmentPhase` callback interfaces
 - `src/api/types.ts` — environment type definitions
+- `src/commands/down.test.ts`, `src/commands/destroy.test.ts` — existing command tests

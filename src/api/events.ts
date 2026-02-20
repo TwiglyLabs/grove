@@ -5,7 +5,7 @@
  * fire-and-forget — the API does not await them.
  */
 
-import type { GroveError } from './errors.js';
+import type { GroveError } from '../shared/errors.js';
 
 export type EnvironmentPhase =
   | 'cluster'

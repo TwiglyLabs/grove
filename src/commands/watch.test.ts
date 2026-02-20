@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before imports
-vi.mock('../api/config.js', () => ({
+vi.mock('../shared/config.js', () => ({
   load: vi.fn(),
 }));
 
@@ -13,17 +13,17 @@ vi.mock('../watcher.js', () => ({
   FileWatcher: vi.fn(),
 }));
 
-vi.mock('../output.js', () => ({
+vi.mock('../shared/output.js', () => ({
   printInfo: vi.fn(),
   printWarning: vi.fn(),
 }));
 
 import { watchCommand } from './watch.js';
-import { load as loadConfig } from '../api/config.js';
+import { load as loadConfig } from '../shared/config.js';
 import { readState } from '../state.js';
 import { FileWatcher } from '../watcher.js';
-import { printInfo, printWarning } from '../output.js';
-import { asRepoId } from '../api/identity.js';
+import { printInfo, printWarning } from '../shared/output.js';
+import { asRepoId } from '../shared/identity.js';
 import type { GroveConfig } from '../config.js';
 import type { EnvironmentState } from '../state.js';
 

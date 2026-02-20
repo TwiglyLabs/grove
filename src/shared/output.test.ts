@@ -8,7 +8,7 @@ import {
   printTestFailures,
 } from './output.js';
 import type { DashboardData } from './output.js';
-import type { TestResult, FailureDetail } from './types.js';
+import type { TestResult, FailureDetail } from '../types.js';
 
 describe('output', () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;

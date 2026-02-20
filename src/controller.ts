@@ -9,7 +9,7 @@ import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
 import { PortForwardProcess } from './processes/PortForwardProcess.js';
 import { GenericDevServer } from './frontends/GenericDevServer.js';
 import { waitForHealth } from './health.js';
-import { printInfo, printSuccess, printError, printSection } from './output.js';
+import { printInfo, printSuccess, printError, printSection } from './shared/output.js';
 import { Timer } from './timing.js';
 
 export interface UpOptions {

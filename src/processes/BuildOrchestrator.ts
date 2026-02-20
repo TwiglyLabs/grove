@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import { join } from 'path';
 import type { GroveConfig, Service } from '../config.js';
 import type { EnvironmentState } from '../state.js';
-import { printInfo, printSuccess } from '../output.js';
+import { printInfo, printSuccess } from '../shared/output.js';
 
 export class BuildOrchestrator {
   constructor(

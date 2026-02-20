@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import { realpathSync } from 'fs';
 import { basename, resolve } from 'path';
 import { repo } from '../api/index.js';
-import { printSuccess, printError, printInfo, jsonSuccess, jsonError } from '../output.js';
+import { printSuccess, printError, printInfo, jsonSuccess, jsonError } from '../shared/output.js';
 
 interface RepoContext {
   json: boolean;

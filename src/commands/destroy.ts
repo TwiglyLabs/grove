@@ -1,6 +1,6 @@
-import type { RepoId } from '../api/identity.js';
+import type { RepoId } from '../shared/identity.js';
 import { destroy } from '../api/environment.js';
-import { printInfo, printSuccess, printWarning } from '../output.js';
+import { printInfo, printSuccess, printWarning } from '../shared/output.js';
 
 export async function destroyCommand(repoId: RepoId): Promise<void> {
   const result = await destroy(repoId);

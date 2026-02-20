@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import { existsSync, copyFileSync } from 'fs';
 import { join } from 'path';
 import type { GroveConfig, BootstrapStep } from './config.js';
-import { printInfo, printSuccess, printWarning } from './output.js';
+import { printInfo, printSuccess, printWarning } from './shared/output.js';
 
 function checkCondition(check: BootstrapStep['check'], repoRoot: string): boolean {
   switch (check.type) {

@@ -1,9 +1,9 @@
 import { spawn } from 'child_process';
-import type { RepoId } from '../api/identity.js';
+import type { RepoId } from '../shared/identity.js';
 import { getShellCommand } from '../api/shell.js';
-import { load as loadConfig } from '../api/config.js';
-import { EnvironmentNotRunningError, PodNotFoundError } from '../api/errors.js';
-import { printError } from '../output.js';
+import { load as loadConfig } from '../shared/config.js';
+import { EnvironmentNotRunningError, PodNotFoundError } from '../shared/errors.js';
+import { printError } from '../shared/output.js';
 
 export async function shellCommand(repoId: RepoId, service?: string): Promise<void> {
   if (!service) {

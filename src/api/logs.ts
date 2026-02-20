@@ -8,14 +8,14 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { spawn } from 'child_process';
-import { load as loadConfig } from './config.js';
+import { load as loadConfig } from '../shared/config.js';
 import { readState } from '../state.js';
-import type { RepoId } from './identity.js';
+import type { RepoId } from '../shared/identity.js';
 import {
   EnvironmentNotRunningError,
   PodNotFoundError,
   LogStreamFailedError,
-} from './errors.js';
+} from '../shared/errors.js';
 import type { LogEntry } from './types.js';
 
 /**

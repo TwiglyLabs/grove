@@ -5,10 +5,10 @@
  * resolve config and environment state from RepoId internally.
  */
 
-import { load as loadConfig } from './config.js';
+import { load as loadConfig } from '../shared/config.js';
 import { readState } from '../state.js';
-import type { RepoId } from './identity.js';
-import { EnvironmentNotRunningError } from './errors.js';
+import type { RepoId } from '../shared/identity.js';
+import { EnvironmentNotRunningError } from '../shared/errors.js';
 import type { SimulatorInfo } from './types.js';
 import {
   ensureSimulator as internalEnsure,

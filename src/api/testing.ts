@@ -7,8 +7,8 @@
 
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { load as loadConfig } from './config.js';
-import type { RepoId } from './identity.js';
+import { load as loadConfig } from '../shared/config.js';
+import type { RepoId } from '../shared/identity.js';
 import type { TestEvents } from './events.js';
 import type { TestRunOptions } from './types.js';
 import type { TestResult, TestPlatform } from '../types.js';

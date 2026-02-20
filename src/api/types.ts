@@ -5,11 +5,11 @@
  * for API-specific concepts (results, options, handles).
  */
 
-import type { RepoId, WorkspaceId } from './identity.js';
+import type { RepoId, WorkspaceId } from '../shared/identity.js';
 import type { EnvironmentState } from '../state.js';
 
 // Re-export identity types
-export type { RepoId, WorkspaceId } from './identity.js';
+export type { RepoId, WorkspaceId } from '../shared/identity.js';
 
 // Re-export internal types used in the API surface
 export type { WorkspaceStatus, SyncStatus } from '../workspace/types.js';

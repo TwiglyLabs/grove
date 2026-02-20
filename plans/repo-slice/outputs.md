@@ -8,11 +8,10 @@
 - `get(id: RepoId): Promise<RepoEntry>` — get a single repo by ID
 
 ## Types
-
 `src/repo/types.ts` exports:
-- `RepoEntry` — `{ id: RepoId, name: string, path: string, addedAt: string }`
-- `RepoListEntry` — extends `RepoEntry` with `{ exists: boolean, workspaceCount: number }`
-
+- `RepoEntry` — zod schema + type: `{ id: RepoId, name: string, path: string, addedAt: string }`. Note: existing schema has `id: z.string().optional()` — this becomes `z.string()` (required) since IDs are assigned on add
+- `RepoRegistry` — zod schema + type: `{ version: 1, repos: RepoEntry[] }` — the registry file format
+- `RepoListEntry` — extends `RepoEntry` with `{ exists: boolean, workspaceCount: number }` (moved from `src/api/types.ts`)
 ## CLI subcommand
 
 `src/repo/cli.ts` exports a commander `Command` for `grove repo` with subcommands `add`, `remove`, `list`.

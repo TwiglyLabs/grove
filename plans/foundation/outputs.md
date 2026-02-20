@@ -20,11 +20,10 @@ src/
 ```
 
 ## Shared infrastructure
-
-- `src/shared/identity.ts` — `RepoId`, `WorkspaceId` branded types with `isRepoId`, `asRepoId`, `asWorkspaceId` helpers
-- `src/shared/errors.ts` — `GroveError` and all typed error subclasses
-- `src/shared/output.ts` — `printInfo`, `printSuccess`, `printError`, `printSection`, `printWarning`
-
+- `src/shared/identity.ts` — `RepoId`, `WorkspaceId` branded types with `isRepoId`, `asRepoId`, `asWorkspaceId` helpers (from `src/api/identity.ts`)
+- `src/shared/errors.ts` — `GroveError` and all typed error subclasses (from `src/api/errors.ts`)
+- `src/shared/output.ts` — `printInfo`, `printSuccess`, `printError`, `printSection`, `printWarning` (from `src/output.ts`)
+- `src/shared/config.ts` — `load(repoId)` and `loadWorkspaceConfig(repoId)` — config loading with RepoId→path resolution (from `src/api/config.ts`)
 ## Config compositor pattern
 
 Root `src/config.ts` provides:

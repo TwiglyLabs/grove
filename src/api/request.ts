@@ -17,8 +17,8 @@ import {
 } from '../workspace/git.js';
 import { writeWorkspaceState } from '../workspace/state.js';
 import type { WorkspaceState } from '../workspace/types.js';
-import type { RepoId } from './identity.js';
-import { RepoNotFoundError, BranchExistsError } from './errors.js';
+import type { RepoId } from '../shared/identity.js';
+import { RepoNotFoundError, BranchExistsError } from '../shared/errors.js';
 import type { RequestOptions, RequestResult } from './types.js';
 
 const KEBAB_CASE_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;

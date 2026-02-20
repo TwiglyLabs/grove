@@ -13,9 +13,9 @@ import {
   removeRepo as internalRemoveRepo,
 } from '../repo/state.js';
 import { listWorkspaceStates } from '../workspace/state.js';
-import type { RepoId } from './identity.js';
-import { asRepoId } from './identity.js';
-import { RepoNotFoundError } from './errors.js';
+import type { RepoId } from '../shared/identity.js';
+import { asRepoId } from '../shared/identity.js';
+import { RepoNotFoundError } from '../shared/errors.js';
 import type { RepoEntry, RepoListEntry } from './types.js';
 
 /**

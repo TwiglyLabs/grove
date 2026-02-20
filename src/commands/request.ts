@@ -10,7 +10,7 @@ import {
 } from '../workspace/git.js';
 import { writeWorkspaceState } from '../workspace/state.js';
 import type { WorkspaceState } from '../workspace/types.js';
-import { printSuccess, printError, printWarning, printInfo, jsonSuccess, jsonError } from '../output.js';
+import { printSuccess, printError, printWarning, printInfo, jsonSuccess, jsonError } from '../shared/output.js';
 
 const KEBAB_CASE_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 

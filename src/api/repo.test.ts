@@ -14,8 +14,8 @@ vi.mock('os', async () => {
 });
 
 const { add, remove, get, list, findByPath } = await import('./repo.js');
-const { RepoNotFoundError } = await import('./errors.js');
-const { isRepoId } = await import('./identity.js');
+const { RepoNotFoundError } = await import('../shared/errors.js');
+const { isRepoId } = await import('../shared/identity.js');
 
 describe('repo API', () => {
   beforeEach(() => {
@@ -54,7 +54,7 @@ describe('repo API', () => {
     });
 
     it('returns null for unknown RepoId', async () => {
-      const { asRepoId } = await import('./identity.js');
+      const { asRepoId } = await import('../shared/identity.js');
       const found = await get(asRepoId('repo_nonexistent1'));
       expect(found).toBeNull();
     });
@@ -69,7 +69,7 @@ describe('repo API', () => {
     });
 
     it('throws RepoNotFoundError for unknown ID', async () => {
-      const { asRepoId } = await import('./identity.js');
+      const { asRepoId } = await import('../shared/identity.js');
       await expect(remove(asRepoId('repo_nonexistent1'))).rejects.toThrow(RepoNotFoundError);
     });
   });

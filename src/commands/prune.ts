@@ -1,6 +1,6 @@
-import type { RepoId } from '../api/identity.js';
+import type { RepoId } from '../shared/identity.js';
 import { prune } from '../api/environment.js';
-import { printInfo, printSuccess, printWarning } from '../output.js';
+import { printInfo, printSuccess, printWarning } from '../shared/output.js';
 
 export async function pruneCommand(repoId: RepoId): Promise<void> {
   printInfo('Checking for orphaned resources...');

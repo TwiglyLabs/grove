@@ -20,7 +20,7 @@ export {
   PodNotFoundError,
   LogStreamFailedError,
   AbortError,
-} from './errors.js';
+} from '../shared/errors.js';
 
 // Event interfaces
 export type {
@@ -31,8 +31,8 @@ export type {
 } from './events.js';
 
 // Identity
-export type { RepoId, WorkspaceId } from './identity.js';
-export { isRepoId, asRepoId, asWorkspaceId } from './identity.js';
+export type { RepoId, WorkspaceId } from '../shared/identity.js';
+export { isRepoId, asRepoId, asWorkspaceId } from '../shared/identity.js';
 
 // Public types
 export type {
@@ -80,7 +80,7 @@ export type {
 
 // API modules (namespace imports)
 import * as repo from './repo.js';
-import * as config from './config.js';
+import * as config from '../shared/config.js';
 import * as workspace from './workspace.js';
 import * as request from './request.js';
 import * as environment from './environment.js';

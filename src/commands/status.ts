@@ -1,7 +1,7 @@
-import type { RepoId } from '../api/identity.js';
+import type { RepoId } from '../shared/identity.js';
 import { status } from '../api/environment.js';
-import { printWarning, printDashboard } from '../output.js';
-import type { DashboardData as InternalDashboardData } from '../output.js';
+import { printWarning, printDashboard } from '../shared/output.js';
+import type { DashboardData as InternalDashboardData } from '../shared/output.js';
 
 function isProcessRunning(pid: number): boolean {
   try {

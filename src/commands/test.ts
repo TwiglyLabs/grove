@@ -1,8 +1,8 @@
-import type { RepoId } from '../api/identity.js';
+import type { RepoId } from '../shared/identity.js';
 import type { TestPlatform } from '../types.js';
 import { runTests } from '../api/testing.js';
-import { load as loadConfig } from '../api/config.js';
-import { printError, printTestResult, printTestFailures } from '../output.js';
+import { load as loadConfig } from '../shared/config.js';
+import { printError, printTestResult, printTestFailures } from '../shared/output.js';
 
 function parseTestArgs(args: string[]): { platform: TestPlatform | undefined; options: Record<string, unknown>; json?: boolean } {
   const platform = args[0] as TestPlatform | undefined;

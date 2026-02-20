@@ -6,10 +6,10 @@
  */
 
 import { execSync } from 'child_process';
-import { load as loadConfig } from './config.js';
+import { load as loadConfig } from '../shared/config.js';
 import { readState } from '../state.js';
-import type { RepoId } from './identity.js';
-import { EnvironmentNotRunningError, PodNotFoundError } from './errors.js';
+import type { RepoId } from '../shared/identity.js';
+import { EnvironmentNotRunningError, PodNotFoundError } from '../shared/errors.js';
 import type { ShellCommand } from './types.js';
 
 /**

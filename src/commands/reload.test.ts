@@ -5,7 +5,7 @@ vi.mock('fs', () => ({
   writeFileSync: vi.fn(),
 }));
 
-vi.mock('../api/config.js', () => ({
+vi.mock('../shared/config.js', () => ({
   load: vi.fn(),
 }));
 
@@ -13,17 +13,17 @@ vi.mock('../state.js', () => ({
   readState: vi.fn(),
 }));
 
-vi.mock('../output.js', () => ({
+vi.mock('../shared/output.js', () => ({
   printError: vi.fn(),
 }));
 
 import { writeFileSync } from 'fs';
 import { reloadCommand } from './reload.js';
-import { load as loadConfig } from '../api/config.js';
+import { load as loadConfig } from '../shared/config.js';
 import { readState } from '../state.js';
-import { printError } from '../output.js';
+import { printError } from '../shared/output.js';
 import { ExitError, mockProcessExit } from '../testing/test-helpers.js';
-import { asRepoId } from '../api/identity.js';
+import { asRepoId } from '../shared/identity.js';
 import type { GroveConfig } from '../config.js';
 
 const testRepoId = asRepoId('repo_test123');

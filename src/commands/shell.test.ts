@@ -5,7 +5,7 @@ vi.mock('../api/shell.js', () => ({
   getShellCommand: vi.fn(),
 }));
 
-vi.mock('../api/config.js', () => ({
+vi.mock('../shared/config.js', () => ({
   load: vi.fn(),
 }));
 
@@ -13,18 +13,18 @@ vi.mock('child_process', () => ({
   spawn: vi.fn(),
 }));
 
-vi.mock('../output.js', () => ({
+vi.mock('../shared/output.js', () => ({
   printError: vi.fn(),
 }));
 
 import { spawn } from 'child_process';
 import { shellCommand } from './shell.js';
 import { getShellCommand } from '../api/shell.js';
-import { load as loadConfig } from '../api/config.js';
-import { printError } from '../output.js';
+import { load as loadConfig } from '../shared/config.js';
+import { printError } from '../shared/output.js';
 import { ExitError, mockProcessExit } from '../testing/test-helpers.js';
-import { EnvironmentNotRunningError, PodNotFoundError } from '../api/errors.js';
-import { asRepoId } from '../api/identity.js';
+import { EnvironmentNotRunningError, PodNotFoundError } from '../shared/errors.js';
+import { asRepoId } from '../shared/identity.js';
 import type { GroveConfig } from '../config.js';
 
 const testRepoId = asRepoId('repo_test123');

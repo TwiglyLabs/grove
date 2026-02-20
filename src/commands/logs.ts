@@ -1,9 +1,9 @@
 import { spawn } from 'child_process';
-import type { RepoId } from '../api/identity.js';
+import type { RepoId } from '../shared/identity.js';
 import { readLogs } from '../api/logs.js';
-import { load as loadConfig } from '../api/config.js';
+import { load as loadConfig } from '../shared/config.js';
 import { readState } from '../state.js';
-import { printWarning, printError } from '../output.js';
+import { printWarning, printError } from '../shared/output.js';
 
 export async function logsCommand(repoId: RepoId, serviceName: string, args: string[] = []): Promise<void> {
   const isPod = args.includes('--pod');

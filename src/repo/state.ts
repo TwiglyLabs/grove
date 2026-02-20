@@ -3,7 +3,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import * as lockfile from 'proper-lockfile';
 import { RepoRegistry, type RepoEntry } from './types.js';
-import { createRepoId } from '../api/identity.js';
+import { createRepoId } from '../shared/identity.js';
 
 export function getRegistryDir(): string {
   return process.env.GROVE_REGISTRY_DIR || join(homedir(), '.grove');

@@ -4,7 +4,7 @@ import { readFileSync, unlinkSync } from 'fs';
 import type { GroveConfig, Service } from './config.js';
 import type { EnvironmentState } from './state.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
-import { printInfo, printSuccess } from './output.js';
+import { printInfo, printSuccess } from './shared/output.js';
 
 export class FileWatcher {
   private watcher: FSWatcher | null = null;

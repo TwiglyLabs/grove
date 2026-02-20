@@ -1,7 +1,7 @@
-import type { RepoId } from '../api/identity.js';
+import type { RepoId } from '../shared/identity.js';
 import { up } from '../api/environment.js';
-import { load as loadConfig } from '../api/config.js';
-import { printBanner, printUrlTable } from '../output.js';
+import { load as loadConfig } from '../shared/config.js';
+import { printBanner, printUrlTable } from '../shared/output.js';
 
 export interface UpOptions {
   frontend?: string;

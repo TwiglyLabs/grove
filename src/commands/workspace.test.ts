@@ -45,7 +45,7 @@ vi.mock('../workspace/state.js', () => ({
   findWorkspaceByBranch: mockFindWorkspaceByBranch,
 }));
 
-vi.mock('../output.js', () => ({
+vi.mock('../shared/output.js', () => ({
   printSuccess: mockPrintSuccess,
   printError: mockPrintError,
   printInfo: mockPrintInfo,

@@ -1,12 +1,14 @@
 ---
 title: 'Foundation: Directory Structure, Shared Infra, Commander Skeleton'
-status: draft
+status: done
 description: >-
   Set up vertical slice directory layout, shared infrastructure, config
   compositor pattern, and commander CLI skeleton
 tags:
   - foundation
   - architecture
+not_started_at: '2026-02-20T05:15:40.718Z'
+completed_at: '2026-02-20T22:49:06.285Z'
 ---
 
 ## Problem
@@ -16,10 +18,11 @@ Grove's `src/` is a flat mix of 15+ files with no domain boundaries. Config, sta
 Before migrating any domain into a vertical slice, we need the target structure in place: directories, shared infrastructure extracted, and a commander-based CLI skeleton that slices can register into.
 
 ## Approach
-
 **Phase 1 — Directory scaffolding.** Create the slice directories: `src/repo/`, `src/workspace/`, `src/environment/`, `src/testing/`, `src/shell/`, `src/logs/`, `src/simulator/`, `src/request/`. Create `src/shared/` for cross-cutting infrastructure. Directories are empty initially — no code moves yet.
 
-**Phase 2 — Extract shared infrastructure to `src/shared/`.** Move identity types (`RepoId`, `WorkspaceId`, branded type helpers) to `src/shared/identity.ts`. Move base error classes (`GroveError` and subclasses) to `src/shared/errors.ts`. Move output/formatting helpers (chalk wrappers) to `src/shared/output.ts`. Update all existing imports to point at new locations. Tests must still pass after this move.
+**Phase 2 — Extract shared infrastructure to `src/shared/`.** Move identity types (`RepoId`, `WorkspaceId`, branded type helpers) from `src/api/identity.ts` to `src/shared/identity.ts`. Move base error classes (`GroveError` and subclasses) from `src/api/errors.ts` to `src/shared/errors.ts`. Move output/formatting helpers (chalk wrappers) from `src/output.ts` to `src/shared/output.ts`. Move the config API loader from `src/api/config.ts` to `src/shared/config.ts` — this provides RepoId→path resolution (`load(repoId)`, `loadWorkspaceConfig(repoId)`) that all config-dependent slices need. Update all existing imports to point at new locations. Tests must still pass after this move.
+
+**Note on event interfaces:** `src/api/events.ts` contains domain-specific callback interfaces (`EnvironmentEvents`, `WorkspaceEvents`, `TestEvents`). These are *not* shared infrastructure — they will distribute to their respective slices (environment-slice, workspace-slice, satellite-slices). No action in this plan.
 
 **Phase 3 — Config compositor pattern.** Refactor `src/config.ts` into a thin root parser. The root config file reads `.grove.yaml`, validates the top-level structure, and delegates each section to domain-owned schema fragments. Initially the schema fragments stay inline (they'll move into slices in later plans), but the *pattern* is established: each domain will export a zod schema, and the root config composes them.
 

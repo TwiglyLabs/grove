@@ -1,7 +1,7 @@
 import { existsSync } from 'fs';
 import { listWorkspaceStates, readWorkspaceState, findWorkspaceByBranch } from './state.js';
 import { getRepoStatus } from './git.js';
-import { formatAge } from '../output.js';
+import { formatAge } from '../shared/output.js';
 import type { WorkspaceState } from './types.js';
 
 export interface WorkspaceListItem {

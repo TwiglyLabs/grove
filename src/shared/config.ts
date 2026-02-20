@@ -6,7 +6,7 @@
  */
 
 import type { RepoId } from './identity.js';
-import { resolveRepoPath } from './repo.js';
+import { resolveRepoPath } from '../api/repo.js';
 import {
   loadConfig as internalLoadConfig,
   loadWorkspaceConfig as internalLoadWorkspaceConfig,

@@ -1,6 +1,6 @@
 ---
 title: 'Cleanup: Remove Old Structure, Update Exports and Docs'
-status: draft
+status: not_started
 depends_on:
   - workspace-slice
   - satellite-slices
@@ -10,6 +10,7 @@ description: >-
   README, and CLAUDE.md
 tags:
   - cleanup
+not_started_at: '2026-02-20T05:15:43.425Z'
 ---
 
 ## Problem
@@ -17,8 +18,7 @@ tags:
 After all slices are migrated, the old `src/api/` directory, `src/commands/` directory, and orphaned root-level files will still exist. The package.json exports still point to `./dist/api/index.js`. The README describes the old architecture. The CLAUDE.md needs a freshness update reflecting the completed restructure.
 
 ## Approach
-
-**Delete old directories.** Remove `src/api/` entirely — all its functionality now lives in the slices. Remove `src/commands/` entirely. Remove orphaned root files: `src/types.ts`, `src/sanitize.ts`, `src/timing.ts`, and any others that were absorbed into slices.
+**Delete old directories.** Remove `src/api/` entirely — all its functionality now lives in the slices. Remove `src/commands/` entirely. Remove orphaned root files: `src/types.ts`, `src/sanitize.ts`, `src/timing.ts`, `src/template.ts`, and any others that were absorbed into slices. Verify `src/api/events.ts` is empty or deleted (all event interfaces distributed to slices).
 
 **Update `src/index.ts`.** The public API entry point re-exports from slices:
 ```ts

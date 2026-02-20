@@ -26,7 +26,7 @@ vi.mock('os', async () => {
 
 const { add } = await import('./repo.js');
 const { getShellCommand } = await import('./shell.js');
-const { EnvironmentNotRunningError } = await import('./errors.js');
+const { EnvironmentNotRunningError } = await import('../shared/errors.js');
 
 function createRepoDir(name: string, groveYaml?: string): string {
   const repoPath = join(testDir, 'repos', name);

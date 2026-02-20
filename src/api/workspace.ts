@@ -17,10 +17,10 @@ import {
   findWorkspaceByBranch,
 } from '../workspace/state.js';
 import type { WorkspaceState } from '../workspace/types.js';
-import type { RepoId, WorkspaceId } from './identity.js';
-import { asWorkspaceId } from './identity.js';
+import type { RepoId, WorkspaceId } from '../shared/identity.js';
+import { asWorkspaceId } from '../shared/identity.js';
 import { resolveRepoPath } from './repo.js';
-import { WorkspaceNotFoundError, ConflictError } from './errors.js';
+import { WorkspaceNotFoundError, ConflictError } from '../shared/errors.js';
 import type {
   CreateOptions,
   CreateResult,

@@ -5,7 +5,7 @@ vi.mock('../api/environment.js', () => ({
   down: vi.fn(),
 }));
 
-vi.mock('../output.js', () => ({
+vi.mock('../shared/output.js', () => ({
   printInfo: vi.fn(),
   printSuccess: vi.fn(),
   printWarning: vi.fn(),
@@ -13,8 +13,8 @@ vi.mock('../output.js', () => ({
 
 import { downCommand } from './down.js';
 import { down } from '../api/environment.js';
-import { printInfo, printSuccess, printWarning } from '../output.js';
-import { asRepoId } from '../api/identity.js';
+import { printInfo, printSuccess, printWarning } from '../shared/output.js';
+import { asRepoId } from '../shared/identity.js';
 
 const testRepoId = asRepoId('repo_test123');
 

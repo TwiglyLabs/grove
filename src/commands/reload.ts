@@ -1,9 +1,9 @@
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-import type { RepoId } from '../api/identity.js';
-import { load as loadConfig } from '../api/config.js';
+import type { RepoId } from '../shared/identity.js';
+import { load as loadConfig } from '../shared/config.js';
 import { readState } from '../state.js';
-import { printError } from '../output.js';
+import { printError } from '../shared/output.js';
 
 export async function reloadCommand(repoId: RepoId, service?: string): Promise<void> {
   const config = await loadConfig(repoId);

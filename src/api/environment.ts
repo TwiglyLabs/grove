@@ -6,9 +6,9 @@
  */
 
 import { spawn } from 'child_process';
-import { load as loadConfig } from './config.js';
-import type { RepoId } from './identity.js';
-import { EnvironmentNotRunningError } from './errors.js';
+import { load as loadConfig } from '../shared/config.js';
+import type { RepoId } from '../shared/identity.js';
+import { EnvironmentNotRunningError } from '../shared/errors.js';
 import type { EnvironmentEvents } from './events.js';
 import type {
   UpOptions,

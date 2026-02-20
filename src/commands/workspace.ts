@@ -3,7 +3,7 @@ import { listWorkspaces, getWorkspaceStatus } from '../workspace/status.js';
 import { syncWorkspace, ConflictError } from '../workspace/sync.js';
 import { closeWorkspace } from '../workspace/close.js';
 import { readWorkspaceState, findWorkspaceByBranch } from '../workspace/state.js';
-import { printSuccess, printError, printInfo, printWarning, jsonSuccess, jsonError } from '../output.js';
+import { printSuccess, printError, printInfo, printWarning, jsonSuccess, jsonError } from '../shared/output.js';
 
 interface WorkspaceContext {
   json: boolean;
