@@ -73,6 +73,12 @@ describe('lib (public API barrel)', () => {
       expect(typeof lib.environment.destroy).toBe('function');
     });
 
+    it('workspace has expected functions', () => {
+      expect(typeof lib.workspace.describe).toBe('function');
+      expect(typeof lib.workspace.create).toBe('function');
+      expect(typeof lib.workspace.list).toBe('function');
+    });
+
     it('config has expected functions', () => {
       expect(typeof lib.config.load).toBe('function');
     });

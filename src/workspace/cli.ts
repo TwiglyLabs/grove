@@ -3,6 +3,7 @@ import { listWorkspaces, getWorkspaceStatus } from './status.js';
 import { syncWorkspace, ConflictError } from './sync.js';
 import { closeWorkspace } from './close.js';
 import { readWorkspaceState, findWorkspaceByBranch } from './state.js';
+import { describe as describeWorkspace } from './api.js';
 import { printSuccess, printError, printInfo, printWarning, jsonSuccess, jsonError } from '../shared/output.js';
 
 interface WorkspaceContext {
@@ -59,6 +60,8 @@ export async function workspaceCommand(args: string[]): Promise<void> {
       return handleClose(rest, ctx);
     case 'switch':
       return handleSwitch(rest, ctx);
+    case 'describe':
+      return handleDescribe(rest, ctx);
     default:
       printWorkspaceUsage();
       if (subcommand) {
@@ -233,6 +236,52 @@ async function handleSwitch(args: string[], ctx: WorkspaceContext): Promise<void
   }
 }
 
+async function handleDescribe(args: string[], ctx: WorkspaceContext): Promise<void> {
+  const branchOrId = args.find(a => !a.startsWith('--'));
+  if (!branchOrId) {
+    const msg = 'Usage: grove workspace describe <branch|id>';
+    ctx.json ? jsonError(msg) : printError(msg);
+    return;
+  }
+
+  try {
+    const descriptor = describeWorkspace(branchOrId as import('../shared/identity.js').WorkspaceId);
+    if (ctx.json) {
+      jsonSuccess(descriptor);
+    } else {
+      console.log(`  Workspace: ${descriptor.workspace.id}  Branch: ${descriptor.workspace.branch}`);
+      console.log(`  Repos:`);
+      for (const repo of descriptor.workspace.repos) {
+        console.log(`    ${repo.role === 'parent' ? '*' : ' '} ${repo.name}  ${repo.path}`);
+      }
+      if (descriptor.services.length > 0) {
+        console.log(`  Services:`);
+        for (const svc of descriptor.services) {
+          console.log(`    ${svc.name}  ${svc.url}  :${svc.port}`);
+        }
+      }
+      if (descriptor.frontends.length > 0) {
+        console.log(`  Frontends:`);
+        for (const fe of descriptor.frontends) {
+          console.log(`    ${fe.name}  ${fe.url}  cwd:${fe.cwd}`);
+        }
+      }
+      if (Object.keys(descriptor.testing.commands).length > 0) {
+        console.log(`  Testing:`);
+        for (const [platform, runner] of Object.entries(descriptor.testing.commands)) {
+          console.log(`    ${platform}: ${runner}`);
+        }
+      }
+      if (descriptor.shell.targets.length > 0) {
+        console.log(`  Shell targets: ${descriptor.shell.targets.join(', ')}`);
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    ctx.json ? jsonError(msg) : printError(msg);
+  }
+}
+
 const subcommandHelp: Record<string, string> = {
   create: `
 grove workspace create <branch> [options]
@@ -373,6 +422,27 @@ Examples:
   grove workspace close feature-auth --merge --json
 `,
 
+  describe: `
+grove workspace describe <branch|id> [options]
+
+  Output a complete environment descriptor for a workspace. Composes workspace
+  state, environment state, and config into a single payload suitable for
+  agent handoff.
+
+  Returns: workspace info (repos, branch), services (URLs, ports), frontends,
+  testing commands, and shell targets.
+
+Arguments:
+  <branch|id>    Branch name or workspace ID
+
+Options:
+  --json         Output as JSON: { ok, data: { workspace, services, frontends, testing, shell } }
+
+Examples:
+  grove workspace describe feature-auth
+  grove workspace describe feature-auth --json
+`,
+
   switch: `
 grove workspace switch <branch> [options]
 
@@ -413,6 +483,7 @@ Commands:
   sync <branch> [--verbose]                             Fetch and merge upstream
   close <branch> --merge|--discard [--dry-run]          Close a workspace
   switch <branch>                                       Print workspace root path
+  describe <branch|id>                                  Environment descriptor
   help [<command>]                                      Show help for a command
 
 Global options:

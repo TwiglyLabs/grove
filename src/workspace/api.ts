@@ -34,7 +34,11 @@ import type {
   CloseResult,
   DryRunResult,
   WorkspaceEvents,
+  EnvironmentDescriptor,
 } from './types.js';
+import { loadConfig } from '../config.js';
+import { readState as readEnvState } from '../environment/state.js';
+import { sanitizeBranchName } from './sanitize.js';
 
 /**
  * Create a workspace with git worktrees for the parent repo and any child repos.
@@ -192,6 +196,63 @@ export function cleanOrphanedWorktrees(entries: Array<{ workspaceId: string }>):
       // Best-effort cleanup
     }
   }
+}
+
+/**
+ * Describe a workspace environment — compose workspace state, environment state,
+ * and config into a single EnvironmentDescriptor for handoff to agents.
+ */
+export function describe(workspace: WorkspaceId): EnvironmentDescriptor {
+  const state = resolveWorkspace(workspace);
+  const config = loadConfig(state.source);
+  const worktreeId = sanitizeBranchName(state.branch);
+  const envState = readEnvState(config, worktreeId);
+
+  // Workspace info from state
+  const workspaceInfo: EnvironmentDescriptor['workspace'] = {
+    id: asWorkspaceId(state.id),
+    branch: state.branch,
+    repos: state.repos.map(r => ({
+      name: r.name,
+      path: r.worktree,
+      role: r.role,
+    })),
+  };
+
+  // Services from environment state ports/URLs + config service definitions
+  const services: EnvironmentDescriptor['services'] = config.services
+    .filter(s => s.portForward)
+    .map(s => ({
+      name: s.name,
+      url: envState?.urls[s.name] ?? '',
+      port: envState?.ports[s.name] ?? 0,
+    }));
+
+  // Frontends from config + environment state
+  const frontends: EnvironmentDescriptor['frontends'] = (config.frontends ?? []).map(f => ({
+    name: f.name,
+    url: envState?.urls[f.name] ?? '',
+    cwd: f.cwd,
+  }));
+
+  // Testing commands from config — extract runner per platform
+  const commands: Record<string, string> = {};
+  if (config.testing) {
+    if (config.testing.mobile) commands.mobile = config.testing.mobile.runner;
+    if (config.testing.webapp) commands.webapp = config.testing.webapp.runner;
+    if (config.testing.api) commands.api = config.testing.api.runner;
+  }
+
+  // Shell targets from config utilities
+  const targets = (config.utilities?.shellTargets ?? []).map(t => t.name);
+
+  return {
+    workspace: workspaceInfo,
+    services,
+    frontends,
+    testing: { commands },
+    shell: { targets },
+  };
 }
 
 /** Resolve a WorkspaceId to a WorkspaceState, throwing if not found */

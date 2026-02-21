@@ -116,6 +116,40 @@ export interface CloseResult {
   mode: CloseMode;
 }
 
+// --- Environment descriptor types ---
+
+export interface ServiceDescriptor {
+  name: string;
+  url: string;
+  port: number;
+}
+
+export interface FrontendDescriptor {
+  name: string;
+  url: string;
+  cwd: string;
+}
+
+export interface TestingDescriptor {
+  commands: Record<string, string>;
+}
+
+export interface ShellDescriptor {
+  targets: string[];
+}
+
+export interface EnvironmentDescriptor {
+  workspace: {
+    id: WorkspaceId;
+    branch: string;
+    repos: Array<{ name: string; path: string; role: 'parent' | 'child' }>;
+  };
+  services: ServiceDescriptor[];
+  frontends: FrontendDescriptor[];
+  testing: TestingDescriptor;
+  shell: ShellDescriptor;
+}
+
 // --- Event interface ---
 
 export interface WorkspaceEvents {

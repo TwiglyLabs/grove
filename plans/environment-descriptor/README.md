@@ -1,6 +1,6 @@
 ---
 title: Environment Descriptor
-status: not_started
+status: done
 description: >-
   Add a describe() function that returns everything an agent needs — worktree
   paths, service URLs, test commands, health status, log paths
@@ -10,6 +10,7 @@ tags:
   - api
   - canopy
 not_started_at: '2026-02-21T02:02:30.661Z'
+completed_at: '2026-02-21T04:20:13.379Z'
 ---
 
 ## Problem

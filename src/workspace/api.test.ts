@@ -14,6 +14,9 @@ const {
   mockInternalReadState,
   mockFindWorkspaceByBranch,
   mockDeleteWorkspaceState,
+  mockLoadConfig,
+  mockReadEnvState,
+  mockSanitizeBranchName,
   InternalConflictError,
 } = vi.hoisted(() => {
   class _InternalConflictError extends Error {
@@ -37,6 +40,9 @@ const {
     mockInternalReadState: vi.fn(),
     mockFindWorkspaceByBranch: vi.fn(),
     mockDeleteWorkspaceState: vi.fn(),
+    mockLoadConfig: vi.fn(),
+    mockReadEnvState: vi.fn(),
+    mockSanitizeBranchName: vi.fn(),
     InternalConflictError: _InternalConflictError,
   };
 });
@@ -69,7 +75,19 @@ vi.mock('./state.js', () => ({
   deleteWorkspaceState: mockDeleteWorkspaceState,
 }));
 
-import { create, list, getStatus, sync, close, resolvePath, readState, findOrphanedWorktrees, cleanOrphanedWorktrees } from './api.js';
+vi.mock('../config.js', () => ({
+  loadConfig: mockLoadConfig,
+}));
+
+vi.mock('../environment/state.js', () => ({
+  readState: mockReadEnvState,
+}));
+
+vi.mock('./sanitize.js', () => ({
+  sanitizeBranchName: mockSanitizeBranchName,
+}));
+
+import { create, list, getStatus, sync, close, resolvePath, readState, findOrphanedWorktrees, cleanOrphanedWorktrees, describe as describeWorkspace } from './api.js';
 import { WorkspaceNotFoundError, ConflictError } from '../shared/errors.js';
 
 // --- Helpers ---
@@ -430,6 +448,217 @@ describe('workspace api', () => {
 
       expect(() => cleanOrphanedWorktrees(entries)).not.toThrow();
       expect(mockDeleteWorkspaceState).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('describe', () => {
+    const fullConfig = {
+      project: { name: 'myproject', cluster: 'local', clusterType: 'kind' },
+      helm: { chart: './helm', release: 'myproject', valuesFiles: ['values.yaml'] },
+      services: [
+        { name: 'api', portForward: { remotePort: 8080 }, build: { image: 'api', dockerfile: 'Dockerfile' } },
+        { name: 'worker', build: { image: 'worker', dockerfile: 'Dockerfile' } },
+      ],
+      frontends: [
+        { name: 'webapp', command: 'npm run dev', cwd: 'packages/webapp' },
+      ],
+      testing: {
+        mobile: { runner: 'maestro', basePath: 'e2e' },
+        webapp: { runner: 'vitest', cwd: 'packages/webapp' },
+        api: { runner: 'jest', cwd: 'packages/api' },
+        historyDir: '.grove/test-history',
+        historyLimit: 10,
+        defaultTimeout: 300000,
+      },
+      utilities: {
+        shellTargets: [
+          { name: 'api', podSelector: 'app=api' },
+          { name: 'worker', podSelector: 'app=worker' },
+        ],
+      },
+      portBlockSize: 3,
+      repoRoot: '/repos/project',
+    };
+
+    const envState = {
+      namespace: 'myproject-feature-x',
+      branch: 'feature-x',
+      worktreeId: 'feature-x',
+      ports: { api: 10000, webapp: 10001 },
+      urls: { api: 'http://127.0.0.1:10000', webapp: 'http://127.0.0.1:10001' },
+      processes: {},
+      lastEnsure: '2026-02-14T10:00:00Z',
+    };
+
+    beforeEach(() => {
+      mockSanitizeBranchName.mockReturnValue('feature-x');
+    });
+
+    it('composes full descriptor from workspace state, env state, and config', () => {
+      mockInternalReadState.mockReturnValue(makeState());
+      mockLoadConfig.mockReturnValue(fullConfig);
+      mockReadEnvState.mockReturnValue(envState);
+
+      const result = describeWorkspace(testWsId);
+
+      expect(result.workspace).toEqual({
+        id: 'project-feature-x',
+        branch: 'feature-x',
+        repos: [{ name: 'project', role: 'parent', path: '/home/user/worktrees/project/feature-x' }],
+      });
+      expect(result.services).toEqual([
+        { name: 'api', url: 'http://127.0.0.1:10000', port: 10000 },
+      ]);
+      expect(result.frontends).toEqual([
+        { name: 'webapp', url: 'http://127.0.0.1:10001', cwd: 'packages/webapp' },
+      ]);
+      expect(result.testing).toEqual({
+        commands: { mobile: 'maestro', webapp: 'vitest', api: 'jest' },
+      });
+      expect(result.shell).toEqual({
+        targets: ['api', 'worker'],
+      });
+    });
+
+    it('loads config from workspace source path', () => {
+      mockInternalReadState.mockReturnValue(makeState({ source: '/repos/myrepo' }));
+      mockLoadConfig.mockReturnValue(fullConfig);
+      mockReadEnvState.mockReturnValue(envState);
+
+      describeWorkspace(testWsId);
+
+      expect(mockLoadConfig).toHaveBeenCalledWith('/repos/myrepo');
+    });
+
+    it('passes sanitized branch name as worktreeId to readEnvState', () => {
+      mockInternalReadState.mockReturnValue(makeState());
+      mockLoadConfig.mockReturnValue(fullConfig);
+      mockReadEnvState.mockReturnValue(envState);
+      mockSanitizeBranchName.mockReturnValue('feat--my-branch');
+
+      describeWorkspace(testWsId);
+
+      expect(mockSanitizeBranchName).toHaveBeenCalledWith('feature-x');
+      expect(mockReadEnvState).toHaveBeenCalledWith(fullConfig, 'feat--my-branch');
+    });
+
+    it('returns empty URLs and zero ports when environment is not running', () => {
+      mockInternalReadState.mockReturnValue(makeState());
+      mockLoadConfig.mockReturnValue(fullConfig);
+      mockReadEnvState.mockReturnValue(null);
+
+      const result = describeWorkspace(testWsId);
+
+      expect(result.services).toEqual([
+        { name: 'api', url: '', port: 0 },
+      ]);
+      expect(result.frontends).toEqual([
+        { name: 'webapp', url: '', cwd: 'packages/webapp' },
+      ]);
+    });
+
+    it('returns empty testing commands when config has no testing section', () => {
+      mockInternalReadState.mockReturnValue(makeState());
+      mockLoadConfig.mockReturnValue({ ...fullConfig, testing: undefined });
+      mockReadEnvState.mockReturnValue(envState);
+
+      const result = describeWorkspace(testWsId);
+
+      expect(result.testing).toEqual({ commands: {} });
+    });
+
+    it('returns empty shell targets when config has no utilities', () => {
+      mockInternalReadState.mockReturnValue(makeState());
+      mockLoadConfig.mockReturnValue({ ...fullConfig, utilities: undefined });
+      mockReadEnvState.mockReturnValue(envState);
+
+      const result = describeWorkspace(testWsId);
+
+      expect(result.shell).toEqual({ targets: [] });
+    });
+
+    it('only includes services with portForward in services list', () => {
+      mockInternalReadState.mockReturnValue(makeState());
+      mockLoadConfig.mockReturnValue(fullConfig);
+      mockReadEnvState.mockReturnValue(envState);
+
+      const result = describeWorkspace(testWsId);
+
+      // 'worker' has no portForward, should be excluded
+      expect(result.services).toHaveLength(1);
+      expect(result.services[0].name).toBe('api');
+    });
+
+    it('maps multiple repos including parent and child', () => {
+      const multiRepoState = makeState({
+        repos: [
+          { name: 'project', role: 'parent', source: '/repos/project', worktree: '/home/user/worktrees/project/feature-x', parentBranch: 'main' },
+          { name: 'public', role: 'child', source: '/repos/public', worktree: '/home/user/worktrees/project/feature-x/public', parentBranch: 'main' },
+          { name: 'cloud', role: 'child', source: '/repos/cloud', worktree: '/home/user/worktrees/project/feature-x/cloud', parentBranch: 'main' },
+        ],
+      });
+      mockInternalReadState.mockReturnValue(multiRepoState);
+      mockLoadConfig.mockReturnValue(fullConfig);
+      mockReadEnvState.mockReturnValue(envState);
+
+      const result = describeWorkspace(testWsId);
+
+      expect(result.workspace.repos).toEqual([
+        { name: 'project', role: 'parent', path: '/home/user/worktrees/project/feature-x' },
+        { name: 'public', role: 'child', path: '/home/user/worktrees/project/feature-x/public' },
+        { name: 'cloud', role: 'child', path: '/home/user/worktrees/project/feature-x/cloud' },
+      ]);
+    });
+
+    it('includes only configured testing platforms in commands', () => {
+      mockInternalReadState.mockReturnValue(makeState());
+      mockLoadConfig.mockReturnValue({
+        ...fullConfig,
+        testing: {
+          mobile: { runner: 'maestro', basePath: 'e2e' },
+          historyDir: '.grove/test-history',
+          historyLimit: 10,
+          defaultTimeout: 300000,
+        },
+      });
+      mockReadEnvState.mockReturnValue(envState);
+
+      const result = describeWorkspace(testWsId);
+
+      expect(result.testing.commands).toEqual({ mobile: 'maestro' });
+    });
+
+    it('maps multiple services with portForward', () => {
+      const multiServiceConfig = {
+        ...fullConfig,
+        services: [
+          { name: 'api', portForward: { remotePort: 8080 }, build: { image: 'api', dockerfile: 'Dockerfile' } },
+          { name: 'auth', portForward: { remotePort: 9090 }, build: { image: 'auth', dockerfile: 'Dockerfile' } },
+          { name: 'worker', build: { image: 'worker', dockerfile: 'Dockerfile' } },
+        ],
+      };
+      const multiServiceEnvState = {
+        ...envState,
+        ports: { api: 10000, auth: 10001, webapp: 10002 },
+        urls: { api: 'http://127.0.0.1:10000', auth: 'http://127.0.0.1:10001', webapp: 'http://127.0.0.1:10002' },
+      };
+      mockInternalReadState.mockReturnValue(makeState());
+      mockLoadConfig.mockReturnValue(multiServiceConfig);
+      mockReadEnvState.mockReturnValue(multiServiceEnvState);
+
+      const result = describeWorkspace(testWsId);
+
+      expect(result.services).toEqual([
+        { name: 'api', url: 'http://127.0.0.1:10000', port: 10000 },
+        { name: 'auth', url: 'http://127.0.0.1:10001', port: 10001 },
+      ]);
+    });
+
+    it('throws WorkspaceNotFoundError when workspace does not exist', () => {
+      mockInternalReadState.mockReturnValue(null);
+      mockFindWorkspaceByBranch.mockReturnValue(null);
+
+      expect(() => describeWorkspace(testWsId)).toThrow(WorkspaceNotFoundError);
     });
   });
 });

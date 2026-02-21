@@ -67,6 +67,11 @@ export type {
   CloseOptions,
   DryRunResult,
   CloseResult,
+  EnvironmentDescriptor,
+  ServiceDescriptor,
+  FrontendDescriptor,
+  TestingDescriptor,
+  ShellDescriptor,
 } from './workspace/types.js';
 
 // Testing types

@@ -120,10 +120,11 @@ export function releasePortBlock(config: GroveConfig, worktreeId: string): void 
 /**
  * Read-only state access. Returns state without locking, or null if missing.
  * Used by test runner and utility commands that just need to read current state.
+ * Pass explicit worktreeId to read state for a specific workspace branch.
  */
-export function readState(config: GroveConfig): EnvironmentState | null {
-  const worktreeId = getWorktreeId();
-  const stateFile = getStateFilePath(config, worktreeId);
+export function readState(config: GroveConfig, worktreeId?: string): EnvironmentState | null {
+  const id = worktreeId ?? getWorktreeId();
+  const stateFile = getStateFilePath(config, id);
 
   if (!existsSync(stateFile)) {
     return null;
