@@ -107,6 +107,8 @@ export class FileWatcher {
   }
 
   private scheduleRebuild(service: Service): void {
+    if (this.stopped) return;
+
     const key = service.name;
 
     // If a rebuild is already in flight, mark as pending and skip

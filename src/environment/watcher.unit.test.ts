@@ -440,6 +440,32 @@ describe('FileWatcher rebuild loop prevention', () => {
     // Flag should be cleared despite failure
     expect((watcher as any).rebuilding.has('api')).toBe(false);
   });
+
+  it('re-triggers pending rebuild after failed rebuild exhausts retries', async () => {
+    const events: EnvironmentEvents = {
+      onRebuild: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    // All attempts fail
+    buildServiceFn = vi.fn().mockImplementation(() => { throw new Error('persistent failure'); });
+
+    const watcher = new FileWatcher(makeConfig(), makeState(), events, instantOptions);
+
+    // Start a rebuild
+    const rebuildPromise = (watcher as any).rebuild(makeService());
+
+    // While in-flight, schedule another — should be deferred
+    (watcher as any).scheduleRebuild(makeService());
+    expect((watcher as any).pendingRebuild.has('api')).toBe(true);
+
+    // Let the failing rebuild complete
+    await rebuildPromise;
+
+    // Pending should be cleared and a new rebuild scheduled via debounce timer
+    expect((watcher as any).pendingRebuild.has('api')).toBe(false);
+    expect((watcher as any).debounceTimers.has('api')).toBe(true);
+  });
 });
 
 describe('FileWatcher handleReloadRequest error narrowing', () => {
@@ -539,6 +565,47 @@ describe('FileWatcher stop safety', () => {
 
     expect(mockWaitForHealth).not.toHaveBeenCalled();
     expect(events.onHealthCheck).not.toHaveBeenCalled();
+  });
+
+  it('stop() prevents scheduleRebuild from creating new timers', () => {
+    const watcher = new FileWatcher(makeConfig(), makeState(), undefined, instantOptions);
+    watcher.stop();
+
+    (watcher as any).scheduleRebuild(makeService());
+
+    expect((watcher as any).debounceTimers.size).toBe(0);
+  });
+
+  it('stop() during in-flight rebuild prevents pending rebuild re-trigger', async () => {
+    const events: EnvironmentEvents = {
+      onRebuild: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    let resolveGate!: () => void;
+    const gate = new Promise<void>(r => { resolveGate = r; });
+
+    buildServiceFn = vi.fn().mockImplementationOnce(async () => { await gate; });
+
+    const watcher = new FileWatcher(makeConfig(), makeState(), events, instantOptions);
+
+    // Start a rebuild
+    const rebuildPromise = (watcher as any).rebuild(makeService());
+
+    // Queue a pending rebuild while in-flight
+    (watcher as any).scheduleRebuild(makeService());
+    expect((watcher as any).pendingRebuild.has('api')).toBe(true);
+
+    // Stop the watcher
+    watcher.stop();
+
+    // Let the rebuild complete
+    resolveGate();
+    await rebuildPromise;
+
+    // pendingRebuild is cleared but no new timer was created (stopped guard)
+    expect((watcher as any).pendingRebuild.has('api')).toBe(false);
+    expect((watcher as any).debounceTimers.size).toBe(0);
   });
 });
 

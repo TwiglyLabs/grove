@@ -1,6 +1,6 @@
 ---
 title: Watcher Reliability
-status: in_progress
+status: done
 description: >-
   Fix file watcher — dropped async errors, infinite rebuild loops, silent
   failures, debounce cleanup
@@ -11,6 +11,7 @@ tags:
 type: bugfix
 not_started_at: '2026-02-21T20:29:11.252Z'
 started_at: '2026-02-21T21:48:32.591Z'
+completed_at: '2026-02-21T21:58:08.835Z'
 ---
 
 ## Problem
