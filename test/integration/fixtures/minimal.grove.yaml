@@ -1,0 +1,23 @@
+# Minimal grove config for integration testing.
+# Uses a simple nginx service with a health endpoint — no heavy builds.
+project:
+  name: grove-integration-test
+  cluster: grove-integration
+  clusterType: kind
+
+helm:
+  chart: deploy/helm/integration
+  release: integration
+  valuesFiles:
+    - deploy/helm/integration/values.yaml
+
+services:
+  - name: api
+    build:
+      image: grove-integration-api
+      dockerfile: Dockerfile
+    portForward:
+      remotePort: 8080
+    health:
+      path: /health
+      protocol: http
