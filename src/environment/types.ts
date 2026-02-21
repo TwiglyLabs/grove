@@ -7,6 +7,19 @@
 
 import type { GroveError } from '../shared/errors.js';
 
+// --- Cluster provider types ---
+
+export type ClusterType = 'kind' | 'k3s';
+
+export interface ClusterProvider {
+  readonly type: ClusterType;
+  createCluster(name: string): void;
+  deleteCluster(name: string): void;
+  clusterExists(name: string): boolean;
+  setContext(name: string): void;
+  loadImage(image: string, clusterName: string): void;
+}
+
 // --- State types (from src/state.ts) ---
 
 export interface ProcessInfo {

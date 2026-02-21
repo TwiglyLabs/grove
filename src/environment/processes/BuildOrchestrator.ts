@@ -1,13 +1,14 @@
 import { execSync } from 'child_process';
 import { join } from 'path';
 import type { GroveConfig, Service } from '../../config.js';
-import type { EnvironmentState } from '../types.js';
+import type { ClusterProvider, EnvironmentState } from '../types.js';
 import { printInfo, printSuccess } from '../../shared/output.js';
 
 export class BuildOrchestrator {
   constructor(
     private config: GroveConfig,
-    private state: EnvironmentState
+    private state: EnvironmentState,
+    private provider: ClusterProvider,
   ) {}
 
   buildService(service: Service): void {
@@ -39,31 +40,28 @@ export class BuildOrchestrator {
     }
   }
 
-  loadImageToKind(service: Service): void {
+  loadImage(service: Service): void {
     if (!service.build) {
       return;
     }
 
-    printInfo(`Loading ${service.name} image to kind...`);
+    printInfo(`Loading ${service.name} image to ${this.provider.type}...`);
 
     const { image } = service.build;
     const clusterName = this.config.project.cluster;
 
-    // kind load docker-image <image> --name <cluster>
-    const loadCmd = `kind load docker-image ${image} --name ${clusterName}`;
-
     try {
-      execSync(loadCmd, { stdio: 'inherit' });
-      printSuccess(`Loaded ${service.name} to kind`);
+      this.provider.loadImage(image, clusterName);
+      printSuccess(`Loaded ${service.name} to ${this.provider.type}`);
     } catch (error) {
-      throw new Error(`Failed to load ${service.name} to kind: ${error}`);
+      throw new Error(`Failed to load ${service.name} to ${this.provider.type}: ${error}`);
     }
   }
 
-  loadAllImagesToKind(): void {
+  loadAllImages(): void {
     for (const service of this.config.services) {
       if (service.build) {
-        this.loadImageToKind(service);
+        this.loadImage(service);
       }
     }
   }
@@ -108,7 +106,7 @@ export class BuildOrchestrator {
 
   async buildAndDeploy(): Promise<void> {
     this.buildAllServices();
-    this.loadAllImagesToKind();
+    this.loadAllImages();
     this.helmUpgrade();
   }
 }

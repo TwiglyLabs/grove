@@ -26,6 +26,7 @@ import { ensureEnvironment as internalEnsure } from './controller.js';
 import { readState as internalReadState, releasePortBlock } from './state.js';
 import { FileWatcher } from './watcher.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
+import { createClusterProvider } from './providers/index.js';
 import { Timer } from './timing.js';
 
 function isProcessRunning(pid: number): boolean {
@@ -248,9 +249,10 @@ export async function watch(
         return;
       }
       // Trigger a rebuild via the orchestrator
-      const orchestrator = new BuildOrchestrator(config, state);
+      const provider = createClusterProvider(config.project.clusterType);
+      const orchestrator = new BuildOrchestrator(config, state, provider);
       orchestrator.buildService(serviceConfig);
-      orchestrator.loadImageToKind(serviceConfig);
+      orchestrator.loadImage(serviceConfig);
       orchestrator.helmUpgrade();
     },
   };

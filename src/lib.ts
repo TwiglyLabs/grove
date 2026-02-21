@@ -27,7 +27,7 @@ export type { RepoId, WorkspaceId } from './shared/identity.js';
 export { isRepoId, asRepoId, asWorkspaceId } from './shared/identity.js';
 
 // Event interfaces (from slices)
-export type { EnvironmentPhase, EnvironmentEvents } from './environment/types.js';
+export type { EnvironmentPhase, EnvironmentEvents, ClusterProvider, ClusterType } from './environment/types.js';
 export type { WorkspaceEvents } from './workspace/types.js';
 export type { TestEvents } from './testing/types.js';
 

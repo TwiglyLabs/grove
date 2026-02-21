@@ -1,6 +1,6 @@
 ---
 title: Cluster Abstraction
-status: not_started
+status: done
 description: >-
   Extract cluster provider into a strategy pattern supporting kind, k3s, and
   remote clusters
@@ -9,6 +9,8 @@ depends_on:
 tags:
   - deferred
 not_started_at: '2026-02-21T02:02:32.571Z'
+started_at: '2026-02-21T02:44:15.873Z'
+completed_at: '2026-02-21T02:53:24.197Z'
 ---
 
 ## Problem

@@ -6,6 +6,7 @@ import { ensureCluster, ensureNamespace } from './cluster.js';
 import { loadOrCreateState, writeState } from './state.js';
 import { runBootstrapChecks } from './bootstrap.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
+import { createClusterProvider } from './providers/index.js';
 import { PortForwardProcess } from './processes/PortForwardProcess.js';
 import { GenericDevServer } from './frontends/GenericDevServer.js';
 import { waitForHealth } from './health.js';
@@ -143,8 +144,10 @@ async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Pro
 export async function ensureEnvironment(config: GroveConfig, options: { frontend?: string; all?: boolean } = {}): Promise<EnvironmentState> {
   const timer = new Timer();
 
+  const provider = createClusterProvider(config.project.clusterType);
+
   printSection('Ensuring Cluster');
-  ensureCluster(config.project.cluster);
+  ensureCluster(provider, config.project.cluster);
 
   printSection('Bootstrap Checks');
   await runBootstrapChecks(config);
@@ -158,7 +161,7 @@ export async function ensureEnvironment(config: GroveConfig, options: { frontend
   ensureNamespace(state.namespace);
 
   printSection('Building and Deploying');
-  const orchestrator = new BuildOrchestrator(config, state);
+  const orchestrator = new BuildOrchestrator(config, state, provider);
   await orchestrator.buildAndDeploy();
 
   printSection('Waiting for Deployments');

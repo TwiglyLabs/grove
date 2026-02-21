@@ -1,31 +1,28 @@
 import { execSync } from 'child_process';
+import type { ClusterProvider } from './types.js';
+import { printInfo } from '../shared/output.js';
 
-export function getKindClusters(): string[] {
-  try {
-    const output = execSync('kind get clusters', { encoding: 'utf-8' }).trim();
-    return output ? output.split('\n') : [];
-  } catch (error) {
-    return [];
-  }
-}
-
-export function ensureCluster(clusterName: string = 'twiglylabs-local'): void {
-  const clusters = getKindClusters();
-
-  if (!clusters.includes(clusterName)) {
-    console.log(`Creating kind cluster: ${clusterName}...`);
-    execSync(`kind create cluster --name ${clusterName}`, { stdio: 'inherit' });
+/**
+ * Ensure a cluster exists and kubectl context is set.
+ * Uses the provider abstraction — works with kind, k3s, etc.
+ */
+export function ensureCluster(provider: ClusterProvider, clusterName: string): void {
+  if (!provider.clusterExists(clusterName)) {
+    printInfo(`Creating ${provider.type} cluster: ${clusterName}...`);
+    provider.createCluster(clusterName);
   }
 
-  // Set kubectl context
-  execSync(`kubectl config use-context kind-${clusterName}`, { stdio: 'inherit' });
+  provider.setContext(clusterName);
 }
 
+/**
+ * Ensure a Kubernetes namespace exists. Provider-independent (uses kubectl).
+ */
 export function ensureNamespace(namespace: string): void {
   try {
     execSync(`kubectl get namespace ${namespace}`, { stdio: 'pipe' });
   } catch {
-    console.log(`Creating namespace: ${namespace}...`);
+    printInfo(`Creating namespace: ${namespace}...`);
     execSync(`kubectl create namespace ${namespace}`, { stdio: 'inherit' });
   }
 }

@@ -79,9 +79,12 @@ export const FrontendSchema = z.object({
 
 // --- Project and Helm schemas ---
 
+export const ClusterTypeSchema = z.enum(['kind', 'k3s']).default('kind');
+
 export const ProjectSchema = z.object({
   name: z.string(),
   cluster: z.string().default('twiglylabs-local'),
+  clusterType: ClusterTypeSchema,
 });
 
 export const HelmSchema = z.object({

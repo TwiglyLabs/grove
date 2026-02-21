@@ -4,6 +4,7 @@ import { readFileSync, unlinkSync } from 'fs';
 import type { GroveConfig, Service } from '../config.js';
 import type { EnvironmentState } from './types.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
+import { createClusterProvider } from './providers/index.js';
 import { printInfo, printSuccess } from '../shared/output.js';
 
 export class FileWatcher {
@@ -99,9 +100,10 @@ export class FileWatcher {
     printInfo(`Rebuilding ${service.name}...`);
 
     try {
-      const orchestrator = new BuildOrchestrator(this.config, this.state);
+      const provider = createClusterProvider(this.config.project.clusterType);
+      const orchestrator = new BuildOrchestrator(this.config, this.state, provider);
       orchestrator.buildService(service);
-      orchestrator.loadImageToKind(service);
+      orchestrator.loadImage(service);
       orchestrator.helmUpgrade();
 
       printSuccess(`${service.name} rebuilt and deployed`);
