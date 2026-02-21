@@ -5,11 +5,11 @@ vi.mock('../shared/config.js', () => ({
   load: vi.fn(),
 }));
 
-vi.mock('../environment/state.js', () => ({
+vi.mock('./state.js', () => ({
   readState: vi.fn(),
 }));
 
-vi.mock('../environment/watcher.js', () => ({
+vi.mock('./watcher.js', () => ({
   FileWatcher: vi.fn(),
 }));
 
@@ -24,10 +24,10 @@ vi.mock('../shared/output.js', () => ({
 }));
 
 // Mock the environment API to prevent real calls
-vi.mock('../environment/api.js', async () => {
+vi.mock('./api.js', async () => {
   const { EnvironmentNotRunningError } = await import('../shared/errors.js');
-  const { readState } = await import('../environment/state.js');
-  const { FileWatcher } = await import('../environment/watcher.js');
+  const { readState } = await import('./state.js');
+  const { FileWatcher } = await import('./watcher.js');
   const loadConfig = (await import('../shared/config.js')).load;
   return {
     up: vi.fn(),
@@ -52,14 +52,14 @@ vi.mock('../environment/api.js', async () => {
   };
 });
 
-import { watchCommand } from '../environment/cli.js';
+import { watchCommand } from './cli.js';
 import { load as loadConfig } from '../shared/config.js';
-import { readState } from '../environment/state.js';
-import { FileWatcher } from '../environment/watcher.js';
+import { readState } from './state.js';
+import { FileWatcher } from './watcher.js';
 import { printInfo, printWarning } from '../shared/output.js';
 import { asRepoId } from '../shared/identity.js';
 import type { GroveConfig } from '../config.js';
-import type { EnvironmentState } from '../environment/types.js';
+import type { EnvironmentState } from './types.js';
 
 const testRepoId = asRepoId('repo_test123');
 

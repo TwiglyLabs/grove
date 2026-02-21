@@ -1,6 +1,6 @@
 # Grove
 
-Config-driven local Kubernetes development tool extracted from Rithmly's local-dev infrastructure.
+Config-driven local Kubernetes development tool.
 
 ## Overview
 
@@ -14,6 +14,9 @@ Grove manages local Kubernetes development environments with:
 - Frontend dev server orchestration
 - File watching and auto-rebuild
 - Health checking
+- Multi-repo workspace management
+- Cross-repo request tracking
+- iOS simulator management
 
 ## Installation
 
@@ -31,14 +34,13 @@ Create a `.grove.yaml` in your repository root:
 ```yaml
 project:
   name: myapp
-  cluster: twiglylabs-local  # optional, defaults to twiglylabs-local
+  cluster: twiglylabs-local
 
 helm:
   chart: deploy/helm/myapp
   release: myapp
   valuesFiles:
     - deploy/helm/values.yaml
-  secretsTemplate: deploy/helm/secrets.yaml  # optional
 
 services:
   - name: api
@@ -49,174 +51,103 @@ services:
         - services/api/src
     portForward:
       remotePort: 8080
-      hostIp: 127.0.0.1  # optional, defaults to 127.0.0.1
     health:
       path: /health
-      protocol: http  # or tcp
-
-  - name: worker
-    build:
-      image: myapp/worker:local
-      dockerfile: services/worker/Dockerfile
-    portForward:
-      remotePort: 9090
-    health:
-      protocol: tcp
+      protocol: http
 
 frontends:
   - name: webapp
     command: npm run dev
     cwd: frontends/webapp
-    env:
-      VITE_API_URL: http://localhost:10000
     health:
       path: /
       protocol: http
-
-bootstrap:
-  - name: Ensure .env file
-    check:
-      type: fileExists
-      path: .env
-    fix:
-      type: copyFrom
-      source: .env.example
-      dest: .env
-
-  - name: Install dependencies
-    check:
-      type: commandSucceeds
-      command: test -d node_modules
-    fix:
-      type: run
-      command: npm install
 ```
 
-## Usage
+## CLI Commands
 
-### Start environment
+### Environment
 
 ```bash
-grove up
+grove up                    # Start the development environment
+grove up --frontend webapp  # Start specific frontend only
+grove up --all              # Start all frontends
+grove down                  # Stop all processes
+grove destroy               # Stop processes and delete namespace
+grove status                # Show environment status
+grove watch                 # Watch for file changes and rebuild
+grove prune                 # Clean up orphaned resources
+grove reload [service]      # Trigger service reload
 ```
 
-This will:
-1. Ensure kind cluster exists
-2. Run bootstrap checks
-3. Allocate ports for this branch
-4. Build Docker images
-5. Load images to kind
-6. Deploy with Helm
-7. Start port forwards
-8. Start frontend dev servers
-9. Health check all services
-
-### Check status
+### Services
 
 ```bash
-grove status
+grove logs <service>        # Show logs for a service
+grove logs <service> --pod  # Show kubectl pod logs
+grove shell [service]       # Open shell in a service pod
+grove test <platform>       # Run tests (mobile|webapp|api)
 ```
 
-Shows running processes, ports, and URLs.
-
-### Watch for changes
+### Repos and Workspaces
 
 ```bash
-grove watch
+grove repo add [path]       # Register a repo
+grove repo remove <name>    # Remove a repo
+grove repo list             # List registered repos
+grove workspace create      # Create a multi-repo workspace
+grove workspace list        # List workspaces
+grove workspace status      # Show workspace status
+grove workspace sync        # Sync workspace branches
+grove workspace close       # Close a workspace
+grove request               # File a cross-repo plan request
 ```
 
-Watches configured paths and rebuilds/redeploys on changes.
+## Library API
 
-### View logs
+Grove can be used as a library:
 
-```bash
-grove logs api
-grove logs webapp
+```typescript
+import { environment, workspace, repo } from '@twiglylabs/grove'
+
+// Start environment
+const result = await environment.up(repoId, options)
+
+// List workspaces
+const workspaces = await workspace.list(options)
+
+// Register a repo
+const entry = await repo.add('/path/to/repo')
 ```
-
-### Stop processes
-
-```bash
-grove down
-```
-
-Stops all port forwards and dev servers but keeps the namespace.
-
-### Destroy environment
-
-```bash
-grove destroy
-```
-
-Stops processes and deletes the Kubernetes namespace.
-
-### Clean up orphaned resources
-
-```bash
-grove prune
-```
-
-Removes namespaces that don't have corresponding state files.
 
 ## Architecture
 
-### Port Allocation
+Grove uses a **vertical slice architecture**. Each domain owns its schema, commands, API surface, and tests:
 
-Each branch/worktree gets a unique port block. Ports are allocated starting from 10000 in blocks sized to accommodate all services and frontends. The allocation is persisted in `.grove/<worktree-id>.json`.
-
-### State Management
-
-State files are stored in `.grove/` directory:
-
-```json
-{
-  "namespace": "myapp-main",
-  "branch": "main",
-  "worktreeId": "main",
-  "ports": {
-    "api": 10000,
-    "worker": 10001,
-    "webapp": 10002
-  },
-  "urls": {
-    "api": "http://127.0.0.1:10000",
-    "worker": "tcp://127.0.0.1:10001",
-    "webapp": "http://127.0.0.1:10002"
-  },
-  "processes": {
-    "port-forward-api": {
-      "pid": 12345,
-      "startedAt": "2026-02-10T10:00:00.000Z"
-    }
-  },
-  "lastEnsure": "2026-02-10T10:00:00.000Z"
-}
 ```
-
-### Namespace Naming
-
-Namespaces are named `{project-name}-{sanitized-branch-name}`. Branch names are sanitized to be DNS-compliant (lowercase, alphanumeric + hyphens, max 63 chars).
-
-### File Watching
-
-The watcher monitors paths specified in `services[].build.watchPaths`. Changes trigger:
-1. Docker build
-2. Load to kind
-3. Helm upgrade
-
-Rebuilds are debounced by 500ms to avoid excessive builds.
+src/
+  shared/         Cross-cutting infrastructure (identity, errors, output, config)
+  repo/           Repo registry management
+  workspace/      Multi-repo workspace operations
+  environment/    Environment lifecycle (up, down, destroy, watch)
+  testing/        Test runner and result parsing
+  simulator/      iOS simulator management
+  shell/          Shell into service pods
+  logs/           Log streaming
+  request/        Cross-repo plan requests
+  config.ts       Root config compositor (zod schemas from slices)
+  cli.ts          Commander CLI skeleton
+  lib.ts          Public library API (re-exports from slices)
+  index.ts        CLI entry point
+```
 
 ## Development
 
 ```bash
-# Build TypeScript
-npm run build
-
-# Watch mode
-npm run dev
-
-# Type checking
-npm run lint
+npm test              # Run all tests (vitest)
+npm run test:watch    # Watch mode
+npm run build         # TypeScript build
+npm run lint          # Type-check without emit
 ```
 
 ## License

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before imports
-vi.mock('../environment/api.js', () => ({
+vi.mock('./api.js', () => ({
   down: vi.fn(),
 }));
 
@@ -11,8 +11,8 @@ vi.mock('../shared/output.js', () => ({
   printWarning: vi.fn(),
 }));
 
-import { downCommand } from '../environment/cli.js';
-import { down } from '../environment/api.js';
+import { downCommand } from './cli.js';
+import { down } from './api.js';
 import { printInfo, printSuccess, printWarning } from '../shared/output.js';
 import { asRepoId } from '../shared/identity.js';
 

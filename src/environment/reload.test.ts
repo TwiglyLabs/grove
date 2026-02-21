@@ -9,7 +9,7 @@ vi.mock('../shared/config.js', () => ({
   load: vi.fn(),
 }));
 
-vi.mock('../environment/state.js', () => ({
+vi.mock('./state.js', () => ({
   readState: vi.fn(),
 }));
 
@@ -24,9 +24,9 @@ vi.mock('../shared/output.js', () => ({
 }));
 
 import { writeFileSync } from 'fs';
-import { reloadCommand } from '../environment/cli.js';
+import { reloadCommand } from './cli.js';
 import { load as loadConfig } from '../shared/config.js';
-import { readState } from '../environment/state.js';
+import { readState } from './state.js';
 import { printError } from '../shared/output.js';
 import { ExitError, mockProcessExit } from '../testing/test-helpers.js';
 import { asRepoId } from '../shared/identity.js';

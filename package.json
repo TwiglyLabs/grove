@@ -6,12 +6,12 @@
   "bin": {
     "grove": "./dist/index.js"
   },
-  "main": "./dist/api/index.js",
-  "types": "./dist/api/index.d.ts",
+  "main": "./dist/lib.js",
+  "types": "./dist/lib.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/api/index.js",
-      "types": "./dist/api/index.d.ts"
+      "import": "./dist/lib.js",
+      "types": "./dist/lib.d.ts"
     },
     "./cli": {
       "import": "./dist/index.js"

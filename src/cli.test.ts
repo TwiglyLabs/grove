@@ -29,20 +29,22 @@ vi.mock('./shared/output.js', () => ({
   printError: vi.fn(),
 }));
 
-// Mock all command modules so cli.ts imports don't pull in real dependencies
-vi.mock('./commands/up.js', () => ({ upCommand: vi.fn() }));
-vi.mock('./commands/down.js', () => ({ downCommand: vi.fn() }));
-vi.mock('./commands/destroy.js', () => ({ destroyCommand: vi.fn() }));
-vi.mock('./commands/status.js', () => ({ statusCommand: vi.fn() }));
-vi.mock('./commands/watch.js', () => ({ watchCommand: vi.fn() }));
-vi.mock('./commands/prune.js', () => ({ pruneCommand: vi.fn() }));
-vi.mock('./commands/logs.js', () => ({ logsCommand: vi.fn() }));
-vi.mock('./commands/test.js', () => ({ testCommand: vi.fn() }));
-vi.mock('./commands/shell.js', () => ({ shellCommand: vi.fn() }));
-vi.mock('./commands/reload.js', () => ({ reloadCommand: vi.fn() }));
-vi.mock('./commands/workspace.js', () => ({ workspaceCommand: vi.fn() }));
+// Mock all slice CLI modules so cli.ts imports don't pull in real dependencies
+vi.mock('./environment/cli.js', () => ({
+  upCommand: vi.fn(),
+  downCommand: vi.fn(),
+  destroyCommand: vi.fn(),
+  statusCommand: vi.fn(),
+  watchCommand: vi.fn(),
+  pruneCommand: vi.fn(),
+  reloadCommand: vi.fn(),
+}));
+vi.mock('./logs/cli.js', () => ({ logsCommand: vi.fn() }));
+vi.mock('./testing/cli.js', () => ({ testCommand: vi.fn() }));
+vi.mock('./shell/cli.js', () => ({ shellCommand: vi.fn() }));
+vi.mock('./workspace/cli.js', () => ({ workspaceCommand: vi.fn() }));
 vi.mock('./repo/cli.js', () => ({ repoCommand: vi.fn() }));
-vi.mock('./commands/request.js', () => ({ requestCommand: vi.fn() }));
+vi.mock('./request/cli.js', () => ({ requestCommand: vi.fn() }));
 
 import { resolveCurrentRepo, program } from './cli.js';
 import { execSync } from 'child_process';

@@ -1,6 +1,6 @@
 ---
 title: 'Cleanup: Remove Old Structure, Update Exports and Docs'
-status: not_started
+status: done
 depends_on:
   - workspace-slice
   - satellite-slices
@@ -11,6 +11,7 @@ description: >-
 tags:
   - cleanup
 not_started_at: '2026-02-20T05:15:43.425Z'
+completed_at: '2026-02-21T01:29:05.005Z'
 ---
 
 ## Problem
