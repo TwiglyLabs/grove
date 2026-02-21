@@ -1,6 +1,6 @@
 ---
 title: Clean Library API
-status: archived
+status: done
 description: >-
   Refactor Grove API to return structured data with no stdout side effects,
   making it consumable as a JS library by Canopy
@@ -8,6 +8,7 @@ tags:
   - api
   - canopy
   - foundation
+completed_at: '2026-02-21T02:41:20.502Z'
 ---
 
 ## Problem
