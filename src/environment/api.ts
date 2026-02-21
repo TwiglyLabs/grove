@@ -5,7 +5,7 @@
  * All operations accept RepoId and resolve config/state internally.
  */
 
-import { execSync, spawn } from 'child_process';
+import { execSync } from 'child_process';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { load as loadConfig } from '../shared/config.js';
@@ -34,56 +34,12 @@ import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
 import { createClusterProvider } from './providers/index.js';
 import { Timer } from './timing.js';
 import { registerCleanupHandler, unregisterCleanupHandler } from './signals.js';
-import { isProcessRunning, isGroveProcess } from './process-check.js';
+import { isGroveProcess } from './process-check.js';
+import { killProcess } from './process-kill.js';
+export { killProcess };
 
 /** Module-level supervisor reference for lifecycle management. */
 let activeSupervisor: SupervisorHandle | null = null;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Kill a process with SIGTERM→wait→SIGKILL escalation.
- * Returns whether the process was killed and whether SIGKILL was needed.
- */
-export async function killProcess(
-  pid: number,
-  timeoutMs: number = 5000,
-): Promise<{ killed: boolean; escalated: boolean }> {
-  if (!isProcessRunning(pid)) {
-    return { killed: true, escalated: false };
-  }
-
-  // Phase 1: SIGTERM
-  try {
-    process.kill(pid, 'SIGTERM');
-  } catch {
-    return { killed: true, escalated: false };
-  }
-
-  // Phase 2: Poll for death
-  const pollInterval = 100;
-  const maxPolls = Math.ceil(timeoutMs / pollInterval);
-  for (let i = 0; i < maxPolls; i++) {
-    await sleep(pollInterval);
-    if (!isProcessRunning(pid)) {
-      return { killed: true, escalated: false };
-    }
-  }
-
-  // Phase 3: SIGKILL escalation
-  try {
-    process.kill(pid, 'SIGKILL');
-  } catch {
-    return { killed: true, escalated: true };
-  }
-
-  // Phase 4: Verify dead
-  await sleep(200);
-  const dead = !isProcessRunning(pid);
-  return { killed: dead, escalated: true };
-}
 
 /**
  * Start (or ensure) a dev environment. Returns when fully healthy.

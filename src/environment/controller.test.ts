@@ -99,6 +99,11 @@ vi.mock('child_process', () => ({
   execSync: vi.fn(),
 }));
 
+const mockKillProcess = vi.fn(async () => ({ killed: true, escalated: false }));
+vi.mock('./process-kill.js', () => ({
+  killProcess: mockKillProcess,
+}));
+
 import type { GroveConfig } from '../config.js';
 import { ensureCluster, ensureNamespace } from './cluster.js';
 
@@ -220,16 +225,10 @@ describe('ensureEnvironment', () => {
         return { pid: 1234, startedAt: new Date().toISOString() };
       });
 
-      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+      await expect(ensureEnvironment(config)).rejects.toThrow('port-forward failed for worker');
 
-      try {
-        await expect(ensureEnvironment(config)).rejects.toThrow('port-forward failed for worker');
-
-        // Should have tried to kill the first service's process
-        expect(killSpy).toHaveBeenCalledWith(1234, 'SIGTERM');
-      } finally {
-        killSpy.mockRestore();
-      }
+      // Should have called killProcess for the first service's process
+      expect(mockKillProcess).toHaveBeenCalledWith(1234, 2000);
     });
 
     it('cleans state.processes on port-forward failure', async () => {
@@ -244,18 +243,12 @@ describe('ensureEnvironment', () => {
         return { pid: 1234, startedAt: new Date().toISOString() };
       });
 
-      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+      await expect(ensureEnvironment(config)).rejects.toThrow();
 
-      try {
-        await expect(ensureEnvironment(config)).rejects.toThrow();
-
-        // writeState should be called with cleaned processes
-        const lastWriteCall = mockWriteState.mock.calls[mockWriteState.mock.calls.length - 1];
-        const writtenState = lastWriteCall[0] as { processes: Record<string, unknown> };
-        expect(Object.keys(writtenState.processes)).toHaveLength(0);
-      } finally {
-        killSpy.mockRestore();
-      }
+      // writeState should be called with cleaned processes
+      const lastWriteCall = mockWriteState.mock.calls[mockWriteState.mock.calls.length - 1];
+      const writtenState = lastWriteCall[0] as { processes: Record<string, unknown> };
+      expect(Object.keys(writtenState.processes)).toHaveLength(0);
     });
 
     it('kills all processes when frontend start fails', async () => {
@@ -263,16 +256,10 @@ describe('ensureEnvironment', () => {
 
       mockDevServerStart.mockRejectedValue(new Error('frontend failed'));
 
-      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+      await expect(ensureEnvironment(config, { all: true })).rejects.toThrow('frontend failed');
 
-      try {
-        await expect(ensureEnvironment(config, { all: true })).rejects.toThrow('frontend failed');
-
-        // Should have killed the port-forward process
-        expect(killSpy).toHaveBeenCalledWith(1234, 'SIGTERM');
-      } finally {
-        killSpy.mockRestore();
-      }
+      // Should have called killProcess for the port-forward process
+      expect(mockKillProcess).toHaveBeenCalledWith(1234, 2000);
     });
 
     it('writes cleaned state before re-throwing on frontend failure', async () => {
@@ -280,18 +267,12 @@ describe('ensureEnvironment', () => {
 
       mockDevServerStart.mockRejectedValue(new Error('frontend failed'));
 
-      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+      await expect(ensureEnvironment(config, { all: true })).rejects.toThrow('frontend failed');
 
-      try {
-        await expect(ensureEnvironment(config, { all: true })).rejects.toThrow('frontend failed');
-
-        // Last writeState call should have empty processes
-        const lastWriteCall = mockWriteState.mock.calls[mockWriteState.mock.calls.length - 1];
-        const writtenState = lastWriteCall[0] as { processes: Record<string, unknown> };
-        expect(Object.keys(writtenState.processes)).toHaveLength(0);
-      } finally {
-        killSpy.mockRestore();
-      }
+      // Last writeState call should have empty processes
+      const lastWriteCall = mockWriteState.mock.calls[mockWriteState.mock.calls.length - 1];
+      const writtenState = lastWriteCall[0] as { processes: Record<string, unknown> };
+      expect(Object.keys(writtenState.processes)).toHaveLength(0);
     });
 
     it('propagates the original error after rollback', async () => {
@@ -299,13 +280,39 @@ describe('ensureEnvironment', () => {
 
       mockPortForwardStart.mockRejectedValue(new Error('connection refused'));
 
-      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+      await expect(ensureEnvironment(config)).rejects.toThrow('connection refused');
+    });
 
-      try {
-        await expect(ensureEnvironment(config)).rejects.toThrow('connection refused');
-      } finally {
-        killSpy.mockRestore();
-      }
+    it('propagates original error even when writeState fails during rollback', async () => {
+      const config = makeConfig();
+
+      mockPortForwardStart.mockRejectedValue(new Error('connection refused'));
+      mockWriteState.mockRejectedValueOnce(new Error('disk full'));
+
+      await expect(ensureEnvironment(config)).rejects.toThrow('connection refused');
+    });
+
+    it('kills all processes even when one killProcess call fails', async () => {
+      const config = makeMultiServiceConfig();
+
+      // Both port-forwards start OK, then frontend fails
+      let pfCount = 0;
+      mockPortForwardStart.mockImplementation(async () => {
+        pfCount++;
+        return { pid: 1000 + pfCount, startedAt: new Date().toISOString() };
+      });
+      mockDevServerStart.mockRejectedValue(new Error('frontend failed'));
+
+      // First killProcess fails, second succeeds
+      mockKillProcess
+        .mockRejectedValueOnce(new Error('no such process'))
+        .mockResolvedValue({ killed: true, escalated: false });
+
+      await expect(ensureEnvironment(config, { all: true })).rejects.toThrow('frontend failed');
+
+      // killProcess should have been called for both port-forward processes
+      expect(mockKillProcess).toHaveBeenCalledWith(1001, 2000);
+      expect(mockKillProcess).toHaveBeenCalledWith(1002, 2000);
     });
   });
 

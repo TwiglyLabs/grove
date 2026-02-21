@@ -133,4 +133,36 @@ describe('ensureNamespace', () => {
 
     expect(printInfo).toHaveBeenCalledWith('Creating namespace: my-namespace...');
   });
+
+  it('propagates error when kubectl create namespace fails', () => {
+    mockExecSync
+      .mockImplementationOnce(() => { throw new Error('not found'); })
+      .mockImplementationOnce(() => { throw new Error('forbidden: insufficient permissions'); });
+
+    expect(() => ensureNamespace('my-namespace')).toThrow('forbidden: insufficient permissions');
+  });
+});
+
+describe('ensureCluster — error propagation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('propagates error when createCluster fails', () => {
+    const provider = createMockProvider({
+      clusterExists: vi.fn().mockReturnValue(false),
+      createCluster: vi.fn(() => { throw new Error('kind: docker not running'); }),
+    });
+
+    expect(() => ensureCluster(provider, 'my-cluster')).toThrow('kind: docker not running');
+  });
+
+  it('propagates error when setContext fails', () => {
+    const provider = createMockProvider({
+      clusterExists: vi.fn().mockReturnValue(true),
+      setContext: vi.fn(() => { throw new Error('context switch failed'); }),
+    });
+
+    expect(() => ensureCluster(provider, 'my-cluster')).toThrow('context switch failed');
+  });
 });

@@ -1,6 +1,6 @@
 ---
 title: Controller Robustness
-status: not_started
+status: done
 description: >-
   Fix ensureEnvironment — incremental state writes, partial failure rollback,
   destroy error handling
@@ -13,6 +13,8 @@ tags:
   - 'epic:reliability-hardening'
 type: bugfix
 not_started_at: '2026-02-21T20:29:10.766Z'
+started_at: '2026-02-21T22:44:32.756Z'
+completed_at: '2026-02-21T22:51:24.010Z'
 ---
 
 ## Problem

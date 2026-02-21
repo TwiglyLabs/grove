@@ -15,6 +15,7 @@ import { waitForHealth, waitForHealthResult } from './health.js';
 import { printInfo, printSuccess, printError, printSection } from '../shared/output.js';
 import { DeploymentFailedError } from '../shared/errors.js';
 import { Timer } from './timing.js';
+import { killProcess } from './process-kill.js';
 
 async function waitForDeployments(namespace: string, timeoutSeconds: number = 300): Promise<void> {
   printInfo('Waiting for deployments to be ready...');
@@ -99,9 +100,9 @@ async function startFrontends(config: GroveConfig, state: EnvironmentState, opti
 async function killStartedProcesses(state: EnvironmentState): Promise<void> {
   for (const [name, processInfo] of Object.entries(state.processes)) {
     try {
-      process.kill(processInfo.pid, 'SIGTERM');
+      await killProcess(processInfo.pid, 2000);
     } catch {
-      // Process may already be dead
+      // Best-effort — process may already be dead
     }
     delete state.processes[name];
   }
@@ -196,7 +197,7 @@ export async function ensureEnvironment(
     await startPortForwards(config, state);
   } catch (error) {
     await killStartedProcesses(state);
-    await writeState(state, config);
+    try { await writeState(state, config); } catch { /* best-effort cleanup */ }
     throw error;
   }
   await writeState(state, config);
@@ -205,7 +206,7 @@ export async function ensureEnvironment(
     await startFrontends(config, state, options);
   } catch (error) {
     await killStartedProcesses(state);
-    await writeState(state, config);
+    try { await writeState(state, config); } catch { /* best-effort cleanup */ }
     throw error;
   }
   await writeState(state, config);
