@@ -1,10 +1,11 @@
 import { spawn } from 'child_process';
-import { openSync, existsSync, mkdirSync } from 'fs';
+import { closeSync, openSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { Frontend } from '../../config.js';
 import type { EnvironmentState, ProcessInfo } from '../types.js';
 import { resolveTemplates } from '../template.js';
 import { checkHealth } from '../health.js';
+import { FrontendStartFailedError } from '../../shared/errors.js';
 
 export class GenericDevServer {
   constructor(
@@ -37,29 +38,82 @@ export class GenericDevServer {
     const out = openSync(logFile, 'w');
     const err = openSync(logFile, 'a');
 
-    // Parse command (simple split on spaces - assumes no quoted args with spaces)
-    const [cmd, ...args] = this.config.command.split(' ');
-
-    const child = spawn(cmd, args, {
+    // Use shell: true so the OS handles quoted arguments correctly
+    const child = spawn(this.config.command, {
       cwd,
       env,
       detached: true,
       stdio: ['ignore', out, err],
+      shell: true,
     });
 
     child.unref();
 
+    // Close FDs in the parent process — the child has its own copies
+    closeSync(out);
+    closeSync(err);
+
+    const pid = child.pid;
+    if (pid === undefined) {
+      throw new FrontendStartFailedError(this.config.name, 'spawn returned no PID');
+    }
+
+    // Brief pause to let the child process fail fast if command is invalid
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // Liveness check: verify the process is still alive
+    try {
+      process.kill(pid, 0);
+    } catch {
+      throw new FrontendStartFailedError(this.config.name, 'process exited immediately');
+    }
+
     return {
-      pid: child.pid!,
+      pid,
       startedAt: new Date().toISOString(),
     };
   }
 
-  async stop(pid: number): Promise<void> {
+  async stop(pid: number, timeoutMs: number = 5000): Promise<{ killed: boolean; escalated: boolean }> {
+    // Check if already dead
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return { killed: true, escalated: false };
+    }
+
+    // SIGTERM
     try {
       process.kill(pid, 'SIGTERM');
-    } catch (error) {
-      // Process might already be dead
+    } catch {
+      return { killed: true, escalated: false };
+    }
+
+    // Poll for death
+    const pollInterval = 100;
+    const maxPolls = Math.ceil(timeoutMs / pollInterval);
+    for (let i = 0; i < maxPolls; i++) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      try {
+        process.kill(pid, 0);
+      } catch {
+        return { killed: true, escalated: false };
+      }
+    }
+
+    // SIGKILL escalation
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      return { killed: true, escalated: true };
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+    try {
+      process.kill(pid, 0);
+      return { killed: false, escalated: true };
+    } catch {
+      return { killed: true, escalated: true };
     }
   }
 

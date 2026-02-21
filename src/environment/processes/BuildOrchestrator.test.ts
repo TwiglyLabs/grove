@@ -15,6 +15,7 @@ vi.mock('../../shared/output.js', () => ({
 
 import { BuildOrchestrator } from './BuildOrchestrator.js';
 import { printInfo, printSuccess } from '../../shared/output.js';
+import { ImageLoadFailedError, BuildFailedError, DeploymentFailedError } from '../../shared/errors.js';
 
 function createMockProvider(overrides: Partial<ClusterProvider> = {}): ClusterProvider {
   return {
@@ -101,14 +102,14 @@ describe('BuildOrchestrator', () => {
       expect(printSuccess).toHaveBeenCalledWith('Loaded api to k3s');
     });
 
-    it('throws descriptive error on failure', () => {
+    it('throws ImageLoadFailedError on failure', () => {
       const failingProvider = createMockProvider({
         loadImage: vi.fn().mockImplementation(() => { throw new Error('load failed'); }),
       });
       const orchestrator = new BuildOrchestrator(makeConfig(), makeState(), failingProvider);
       const service = makeService();
 
-      expect(() => orchestrator.loadImage(service)).toThrow('Failed to load api to kind');
+      expect(() => orchestrator.loadImage(service)).toThrow(ImageLoadFailedError);
     });
   });
 
@@ -152,6 +153,14 @@ describe('BuildOrchestrator', () => {
 
       expect(mockExecSync).not.toHaveBeenCalled();
     });
+
+    it('throws BuildFailedError on failure', () => {
+      mockExecSync.mockImplementationOnce(() => { throw new Error('docker error'); });
+      const orchestrator = new BuildOrchestrator(makeConfig(), makeState(), provider);
+      const service = makeService();
+
+      expect(() => orchestrator.buildService(service)).toThrow(BuildFailedError);
+    });
   });
 
   describe('helmUpgrade', () => {
@@ -164,6 +173,13 @@ describe('BuildOrchestrator', () => {
         expect.stringContaining('-n test-app-main'),
         { stdio: 'inherit' },
       );
+    });
+
+    it('throws DeploymentFailedError on failure', () => {
+      mockExecSync.mockImplementationOnce(() => { throw new Error('helm error'); });
+      const orchestrator = new BuildOrchestrator(makeConfig(), makeState(), provider);
+
+      expect(() => orchestrator.helmUpgrade()).toThrow(DeploymentFailedError);
     });
   });
 

@@ -121,7 +121,7 @@ export type GroveConfig = z.infer<typeof GroveConfigSchema> & {
 
 function getRepoRoot(): string {
   try {
-    return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
+    return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8', timeout: 3000 }).trim();
   } catch (error) {
     throw new Error('Not in a git repository');
   }

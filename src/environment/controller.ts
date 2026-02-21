@@ -1,7 +1,8 @@
 import { execSync } from 'child_process';
 import { join } from 'path';
 import type { GroveConfig } from '../config.js';
-import type { EnvironmentState, HealthCheckResult } from './types.js';
+import type { EnvironmentState, HealthCheckResult, SupervisorHandle } from './types.js';
+import { PortForwardSupervisor } from './processes/PortForwardSupervisor.js';
 import { ensureCluster, ensureNamespace } from './cluster.js';
 import { loadOrCreateState, writeState } from './state.js';
 import { runBootstrapChecks } from './bootstrap.js';
@@ -12,6 +13,7 @@ import { PortForwardProcess } from './processes/PortForwardProcess.js';
 import { GenericDevServer } from './frontends/GenericDevServer.js';
 import { waitForHealth, waitForHealthResult } from './health.js';
 import { printInfo, printSuccess, printError, printSection } from '../shared/output.js';
+import { DeploymentFailedError } from '../shared/errors.js';
 import { Timer } from './timing.js';
 
 async function waitForDeployments(namespace: string, timeoutSeconds: number = 300): Promise<void> {
@@ -20,11 +22,11 @@ async function waitForDeployments(namespace: string, timeoutSeconds: number = 30
   try {
     execSync(
       `kubectl wait --for=condition=available --timeout=${timeoutSeconds}s deployment --all -n ${namespace}`,
-      { stdio: 'inherit' }
+      { stdio: 'inherit', timeout: (timeoutSeconds + 10) * 1000 },
     );
     printSuccess('All deployments ready');
   } catch (error) {
-    throw new Error('Deployments failed to become ready');
+    throw new DeploymentFailedError('Deployments failed to become ready');
   }
 }
 
@@ -150,7 +152,7 @@ async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Pro
 export async function ensureEnvironment(
   config: GroveConfig,
   options: { frontend?: string; all?: boolean } = {}
-): Promise<{ state: EnvironmentState; health: HealthCheckResult[] }> {
+): Promise<{ state: EnvironmentState; health: HealthCheckResult[]; supervisor?: SupervisorHandle }> {
   const timer = new Timer();
 
   const provider = createClusterProvider(config.project.clusterType);
@@ -183,11 +185,29 @@ export async function ensureEnvironment(
   await startFrontends(config, state, options);
   const healthResults = await healthCheckAll(config, state);
 
+  // Create and start port-forward supervisor for continuous monitoring
+  const supervisor = new PortForwardSupervisor(config, state);
+  for (const service of config.services) {
+    if (!service.portForward) continue;
+    const processKey = `port-forward-${service.name}`;
+    const processInfo = state.processes[processKey];
+    if (!processInfo) continue;
+
+    supervisor.register(service, {
+      namespace: state.namespace,
+      serviceName: service.name,
+      remotePort: service.portForward.remotePort,
+      localPort: state.ports[service.name],
+      hostIp: service.portForward.hostIp || '127.0.0.1',
+    }, processInfo);
+  }
+  supervisor.start();
+
   printSection('Saving State');
   await writeState(state, config);
   printSuccess('State saved');
 
   printSuccess(`Environment ready in ${timer.format()}`);
 
-  return { state, health: healthResults };
+  return { state, health: healthResults, supervisor };
 }

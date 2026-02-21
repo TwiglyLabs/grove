@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import * as lockfile from 'proper-lockfile';
 import type { GroveConfig } from '../config.js';
 import { sanitizeBranchName } from '../workspace/sanitize.js';
 import type { EnvironmentState, ProcessInfo } from './types.js';
+import { StateWriteFailedError } from '../shared/errors.js';
 
 const STATE_DIR_NAME = '.grove';
 const PORT_START = 10000;
@@ -21,7 +22,7 @@ function getStateDir(config: GroveConfig): string {
 
 function getCurrentBranch(): string {
   try {
-    return execSync('git branch --show-current', { encoding: 'utf-8' }).trim();
+    return execSync('git branch --show-current', { encoding: 'utf-8', timeout: 3000 }).trim();
   } catch {
     return 'main';
   }
@@ -118,24 +119,64 @@ export function releasePortBlock(config: GroveConfig, worktreeId: string): void 
 }
 
 /**
+ * Validates that a parsed object has the four required EnvironmentState fields.
+ */
+export function validateState(obj: unknown): obj is EnvironmentState {
+  if (obj === null || typeof obj !== 'object') return false;
+  const record = obj as Record<string, unknown>;
+  return (
+    typeof record.namespace === 'string' &&
+    typeof record.worktreeId === 'string' &&
+    typeof record.ports === 'object' && record.ports !== null &&
+    typeof record.processes === 'object' && record.processes !== null
+  );
+}
+
+/**
  * Read-only state access. Returns state without locking, or null if missing.
  * Used by test runner and utility commands that just need to read current state.
  * Pass explicit worktreeId to read state for a specific workspace branch.
+ *
+ * On parse failure, attempts recovery from .tmp file if one exists.
  */
 export function readState(config: GroveConfig, worktreeId?: string): EnvironmentState | null {
   const id = worktreeId ?? getWorktreeId();
   const stateFile = getStateFilePath(config, id);
+  const tmpFile = stateFile + '.tmp';
 
-  if (!existsSync(stateFile)) {
-    return null;
+  // Try main file first
+  if (existsSync(stateFile)) {
+    try {
+      const content = readFileSync(stateFile, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (validateState(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Main file corrupt — fall through to .tmp recovery
+    }
   }
 
-  try {
-    const content = readFileSync(stateFile, 'utf-8');
-    return JSON.parse(content) as EnvironmentState;
-  } catch {
-    return null;
+  // Try .tmp recovery
+  if (existsSync(tmpFile)) {
+    try {
+      const content = readFileSync(tmpFile, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (validateState(parsed)) {
+        // Promote .tmp to main
+        try {
+          renameSync(tmpFile, stateFile);
+        } catch {
+          // If rename fails, still return the valid state
+        }
+        return parsed;
+      }
+    } catch {
+      // .tmp also corrupt
+    }
   }
+
+  return null;
 }
 
 export async function loadOrCreateState(config: GroveConfig): Promise<EnvironmentState> {
@@ -224,6 +265,7 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
 
 export async function writeState(state: EnvironmentState, config: GroveConfig): Promise<void> {
   const stateFile = getStateFilePath(config, state.worktreeId);
+  const tmpFile = stateFile + '.tmp';
   const stateDir = getStateDir(config);
 
   if (!existsSync(stateDir)) {
@@ -243,11 +285,20 @@ export async function writeState(state: EnvironmentState, config: GroveConfig): 
   try {
     const release = await lockfile.lock(stateFile, LOCK_OPTIONS);
     try {
-      writeFileSync(stateFile, JSON.stringify(state, null, 2), 'utf-8');
+      // Atomic write: write to .tmp, then rename over main file.
+      // renameSync is atomic on POSIX when source/target are on same filesystem.
+      writeFileSync(tmpFile, JSON.stringify(state, null, 2), 'utf-8');
+      renameSync(tmpFile, stateFile);
     } finally {
       await release();
     }
   } catch (error) {
-    throw new Error(`Failed to write state: ${error}`);
+    // Clean up temp file on failure
+    try {
+      if (existsSync(tmpFile)) unlinkSync(tmpFile);
+    } catch {
+      // Best-effort cleanup
+    }
+    throw new StateWriteFailedError(error);
   }
 }

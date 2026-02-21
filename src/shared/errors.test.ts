@@ -13,6 +13,12 @@ import {
   PodNotFoundError,
   LogStreamFailedError,
   AbortError,
+  FrontendStartFailedError,
+  BuildFailedError,
+  ImageLoadFailedError,
+  NamespaceDeletionFailedError,
+  StateWriteFailedError,
+  StateCorruptedError,
 } from './errors.js';
 
 describe('GroveError', () => {
@@ -53,13 +59,30 @@ describe('error classes', () => {
     expect(err).toBeInstanceOf(GroveError);
   });
 
-  it('ConfigValidationError', () => {
+  it('ConfigValidationError includes field paths in message', () => {
     const issues = [{ path: ['project', 'name'], message: 'Required' }];
     const err = new ConfigValidationError(issues);
     expect(err.code).toBe('CONFIG_INVALID');
     expect(err.issues).toBe(issues);
-    expect(err.message).toContain('1 issue');
+    expect(err.message).toContain('project.name');
+    expect(err.message).toContain('Required');
     expect(err).toBeInstanceOf(GroveError);
+  });
+
+  it('ConfigValidationError formats multiple issues', () => {
+    const issues = [
+      { path: ['services', 0, 'portForward', 'remotePort'], message: 'Expected number' },
+      { path: ['helm', 'chart'], message: 'Required' },
+    ];
+    const err = new ConfigValidationError(issues);
+    expect(err.message).toContain('services.0.portForward.remotePort: Expected number');
+    expect(err.message).toContain('helm.chart: Required');
+  });
+
+  it('ConfigValidationError handles missing path', () => {
+    const issues = [{ message: 'Invalid input' }];
+    const err = new ConfigValidationError(issues);
+    expect(err.message).toContain('(root): Invalid input');
   });
 
   it('BranchExistsError', () => {
@@ -115,6 +138,79 @@ describe('error classes', () => {
   it('AbortError', () => {
     const err = new AbortError();
     expect(err.code).toBe('ABORTED');
+    expect(err).toBeInstanceOf(GroveError);
+  });
+
+  it('FrontendStartFailedError', () => {
+    const err = new FrontendStartFailedError('web');
+    expect(err.code).toBe('FRONTEND_START_FAILED');
+    expect(err.frontend).toBe('web');
+    expect(err.message).toContain('web');
+    expect(err).toBeInstanceOf(GroveError);
+  });
+
+  it('FrontendStartFailedError with cause', () => {
+    const err = new FrontendStartFailedError('web', 'process exited immediately');
+    expect(err.message).toContain('process exited immediately');
+  });
+
+  it('BuildFailedError', () => {
+    const err = new BuildFailedError('api');
+    expect(err.code).toBe('BUILD_FAILED');
+    expect(err.service).toBe('api');
+    expect(err.message).toContain('api');
+    expect(err).toBeInstanceOf(GroveError);
+  });
+
+  it('BuildFailedError with cause', () => {
+    const err = new BuildFailedError('api', 'docker timeout');
+    expect(err.message).toContain('docker timeout');
+  });
+
+  it('ImageLoadFailedError', () => {
+    const err = new ImageLoadFailedError('api', 'kind');
+    expect(err.code).toBe('IMAGE_LOAD_FAILED');
+    expect(err.service).toBe('api');
+    expect(err.providerType).toBe('kind');
+    expect(err.message).toContain('api');
+    expect(err.message).toContain('kind');
+    expect(err).toBeInstanceOf(GroveError);
+  });
+
+  it('ImageLoadFailedError with cause', () => {
+    const err = new ImageLoadFailedError('api', 'k3s', 'image not found');
+    expect(err.message).toContain('image not found');
+  });
+
+  it('NamespaceDeletionFailedError', () => {
+    const err = new NamespaceDeletionFailedError('test-ns');
+    expect(err.code).toBe('NAMESPACE_DELETION_FAILED');
+    expect(err.namespace).toBe('test-ns');
+    expect(err.message).toContain('test-ns');
+    expect(err).toBeInstanceOf(GroveError);
+  });
+
+  it('NamespaceDeletionFailedError with cause', () => {
+    const err = new NamespaceDeletionFailedError('test-ns', 'timeout');
+    expect(err.message).toContain('timeout');
+  });
+
+  it('StateWriteFailedError', () => {
+    const err = new StateWriteFailedError();
+    expect(err.code).toBe('STATE_WRITE_FAILED');
+    expect(err).toBeInstanceOf(GroveError);
+  });
+
+  it('StateWriteFailedError with cause', () => {
+    const err = new StateWriteFailedError('disk full');
+    expect(err.message).toContain('disk full');
+  });
+
+  it('StateCorruptedError', () => {
+    const err = new StateCorruptedError('/tmp/state.json');
+    expect(err.code).toBe('STATE_CORRUPTED');
+    expect(err.filePath).toBe('/tmp/state.json');
+    expect(err.message).toContain('/tmp/state.json');
     expect(err).toBeInstanceOf(GroveError);
   });
 });

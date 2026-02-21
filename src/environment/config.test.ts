@@ -6,6 +6,7 @@ import {
   FrontendSchema,
   HelmSchema,
   BootstrapStepSchema,
+  PortForwardSchema,
 } from './config.js';
 
 describe('ClusterTypeSchema', () => {
@@ -102,6 +103,53 @@ describe('ServiceSchema', () => {
 
     expect(result.portForward!.remotePort).toBe(3000);
     expect(result.portForward!.hostIp).toBe('127.0.0.1');
+  });
+});
+
+describe('PortForwardSchema', () => {
+  it('accepts valid remotePort', () => {
+    const result = PortForwardSchema.parse({ remotePort: 8080 });
+    expect(result.remotePort).toBe(8080);
+    expect(result.hostIp).toBe('127.0.0.1');
+  });
+
+  it('accepts remotePort at boundaries (1 and 65535)', () => {
+    expect(PortForwardSchema.parse({ remotePort: 1 }).remotePort).toBe(1);
+    expect(PortForwardSchema.parse({ remotePort: 65535 }).remotePort).toBe(65535);
+  });
+
+  it('rejects remotePort 0', () => {
+    expect(() => PortForwardSchema.parse({ remotePort: 0 })).toThrow();
+  });
+
+  it('rejects remotePort above 65535', () => {
+    expect(() => PortForwardSchema.parse({ remotePort: 99999 })).toThrow();
+  });
+
+  it('rejects non-integer remotePort', () => {
+    expect(() => PortForwardSchema.parse({ remotePort: 3000.5 })).toThrow();
+  });
+
+  it('rejects negative remotePort', () => {
+    expect(() => PortForwardSchema.parse({ remotePort: -1 })).toThrow();
+  });
+
+  it('accepts valid hostIp', () => {
+    const result = PortForwardSchema.parse({ remotePort: 80, hostIp: '192.168.1.1' });
+    expect(result.hostIp).toBe('192.168.1.1');
+  });
+
+  it('rejects malformed hostIp', () => {
+    expect(() => PortForwardSchema.parse({ remotePort: 80, hostIp: 'locahost' })).toThrow();
+  });
+
+  it('rejects hostIp with wrong format', () => {
+    expect(() => PortForwardSchema.parse({ remotePort: 80, hostIp: '127.0.01' })).toThrow();
+  });
+
+  it('defaults hostIp to 127.0.0.1', () => {
+    const result = PortForwardSchema.parse({ remotePort: 3000 });
+    expect(result.hostIp).toBe('127.0.0.1');
   });
 });
 

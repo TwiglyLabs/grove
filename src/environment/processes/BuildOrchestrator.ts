@@ -3,6 +3,7 @@ import { join } from 'path';
 import type { GroveConfig, Service } from '../../config.js';
 import type { ClusterProvider, EnvironmentState } from '../types.js';
 import { printInfo, printSuccess } from '../../shared/output.js';
+import { BuildFailedError, ImageLoadFailedError, DeploymentFailedError } from '../../shared/errors.js';
 
 export class BuildOrchestrator {
   constructor(
@@ -28,7 +29,7 @@ export class BuildOrchestrator {
       execSync(buildCmd, { stdio: 'inherit' });
       printSuccess(`Built ${service.name}`);
     } catch (error) {
-      throw new Error(`Failed to build ${service.name}: ${error}`);
+      throw new BuildFailedError(service.name, error);
     }
   }
 
@@ -54,7 +55,7 @@ export class BuildOrchestrator {
       this.provider.loadImage(image, clusterName);
       printSuccess(`Loaded ${service.name} to ${this.provider.type}`);
     } catch (error) {
-      throw new Error(`Failed to load ${service.name} to ${this.provider.type}: ${error}`);
+      throw new ImageLoadFailedError(service.name, this.provider.type, error);
     }
   }
 
@@ -100,7 +101,7 @@ export class BuildOrchestrator {
       execSync(helmCmd, { stdio: 'inherit' });
       printSuccess('Helm upgrade complete');
     } catch (error) {
-      throw new Error(`Helm upgrade failed: ${error}`);
+      throw new DeploymentFailedError(`Helm upgrade failed: ${error}`);
     }
   }
 

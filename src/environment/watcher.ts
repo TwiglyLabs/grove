@@ -2,19 +2,33 @@ import { watch, type FSWatcher } from 'chokidar';
 import { join } from 'path';
 import { readFileSync, unlinkSync } from 'fs';
 import type { GroveConfig, Service } from '../config.js';
-import type { EnvironmentState } from './types.js';
+import type { EnvironmentEvents, EnvironmentState } from './types.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
 import { createClusterProvider } from './providers/index.js';
-import { printInfo, printSuccess } from '../shared/output.js';
+import { waitForHealth } from './health.js';
+import { printInfo, printSuccess, printError } from '../shared/output.js';
+import { BuildFailedError, GroveError } from '../shared/errors.js';
+
+export interface WatcherOptions {
+  maxRebuildAttempts?: number;
+  baseRetryDelayMs?: number;
+}
 
 export class FileWatcher {
   private watcher: FSWatcher | null = null;
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
+  private maxRebuildAttempts: number;
+  private baseRetryDelayMs: number;
 
   constructor(
     private config: GroveConfig,
-    private state: EnvironmentState
-  ) {}
+    private state: EnvironmentState,
+    private events?: EnvironmentEvents,
+    options?: WatcherOptions,
+  ) {
+    this.maxRebuildAttempts = options?.maxRebuildAttempts ?? 3;
+    this.baseRetryDelayMs = options?.baseRetryDelayMs ?? 2000;
+  }
 
   start(): void {
     const watchPaths: Array<{ service: Service; paths: string[] }> = [];
@@ -97,19 +111,63 @@ export class FileWatcher {
   }
 
   private async rebuild(service: Service): Promise<void> {
-    printInfo(`Rebuilding ${service.name}...`);
+    const maxAttempts = this.maxRebuildAttempts;
+    const baseDelayMs = this.baseRetryDelayMs;
 
-    try {
-      const provider = createClusterProvider(this.config.project.clusterType);
-      const orchestrator = new BuildOrchestrator(this.config, this.state, provider);
-      orchestrator.buildService(service);
-      orchestrator.loadImage(service);
-      orchestrator.helmUpgrade();
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      printInfo(`Rebuilding ${service.name}${attempt > 1 ? ` (attempt ${attempt}/${maxAttempts})` : ''}...`);
+      this.events?.onRebuild?.(service.name, 'start');
 
-      printSuccess(`${service.name} rebuilt and deployed`);
-    } catch (error) {
-      console.error(`Failed to rebuild ${service.name}:`, error);
+      try {
+        const provider = createClusterProvider(this.config.project.clusterType);
+        const orchestrator = new BuildOrchestrator(this.config, this.state, provider);
+        orchestrator.buildService(service);
+        orchestrator.loadImage(service);
+        orchestrator.helmUpgrade();
+
+        printSuccess(`${service.name} rebuilt and deployed`);
+        this.events?.onRebuild?.(service.name, 'complete');
+
+        // Post-rebuild health check
+        await this.verifyServiceHealth(service);
+        return;
+      } catch (error) {
+        const groveError = error instanceof GroveError
+          ? error
+          : new BuildFailedError(service.name, error);
+
+        if (attempt < maxAttempts) {
+          const delay = baseDelayMs * Math.pow(2, attempt - 1);
+          printError(`Rebuild failed for ${service.name}, retrying in ${delay / 1000}s...`);
+          this.events?.onRebuild?.(service.name, 'error', groveError.message);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          printError(`Rebuild failed for ${service.name} after ${maxAttempts} attempts`);
+          this.events?.onRebuild?.(service.name, 'error', groveError.message);
+          this.events?.onError?.(groveError);
+        }
+      }
     }
+  }
+
+  private async verifyServiceHealth(service: Service): Promise<void> {
+    if (!service.health || !service.portForward) return;
+
+    const port = this.state.ports[service.name];
+    if (!port) return;
+
+    const protocol = service.health.protocol || 'http';
+    const path = service.health.path || '/';
+
+    printInfo(`Verifying ${service.name} health after rebuild...`);
+    const healthy = await waitForHealth(protocol, '127.0.0.1', port, path, 10, 2000);
+
+    if (healthy) {
+      printSuccess(`${service.name} is healthy after rebuild`);
+    } else {
+      printError(`${service.name} health check failed after rebuild`);
+    }
+    this.events?.onHealthCheck?.(service.name, healthy);
   }
 
   private handleReloadRequest(path: string): void {

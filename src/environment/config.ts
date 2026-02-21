@@ -51,8 +51,8 @@ export const ServiceBuildSchema = z.object({
 });
 
 export const PortForwardSchema = z.object({
-  remotePort: z.number(),
-  hostIp: z.string().optional().default('127.0.0.1'),
+  remotePort: z.number().int().min(1).max(65535),
+  hostIp: z.string().ip({ version: 'v4' }).optional().default('127.0.0.1'),
 });
 
 export const HealthCheckSchema = z.object({

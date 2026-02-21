@@ -20,6 +20,13 @@ export {
   PodNotFoundError,
   LogStreamFailedError,
   AbortError,
+  PortForwardFailedError,
+  FrontendStartFailedError,
+  BuildFailedError,
+  ImageLoadFailedError,
+  NamespaceDeletionFailedError,
+  StateWriteFailedError,
+  StateCorruptedError,
 } from './shared/errors.js';
 
 // Identity
@@ -42,6 +49,7 @@ export type {
   DestroyResult,
   DashboardData,
   WatchHandle,
+  SupervisorHandle,
   PruneOptions,
   PruneResult,
   StoppedProcessEntry,

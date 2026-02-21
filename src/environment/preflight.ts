@@ -8,7 +8,7 @@ import { readState } from './state.js';
 
 function checkCommand(command: string, friendlyName: string): PreflightCheck {
   try {
-    execSync(command, { stdio: 'pipe' });
+    execSync(command, { stdio: 'pipe', timeout: 5000 });
     return { name: friendlyName, passed: true };
   } catch {
     return { name: friendlyName, passed: false, message: `${friendlyName} not found or not responding` };

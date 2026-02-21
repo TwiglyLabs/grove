@@ -53,16 +53,21 @@ export interface UpOptions {
   signal?: AbortSignal;
 }
 
+export interface SupervisorHandle {
+  stop(): void;
+}
+
 export interface UpResult {
   state: EnvironmentState;
   urls: Record<string, string>;
   ports: Record<string, number>;
   duration: number;
   health: HealthCheckResult[];
+  supervisor?: SupervisorHandle;
 }
 
 export interface DownResult {
-  stopped: Array<{ name: string; pid: number; success: boolean }>;
+  stopped: Array<{ name: string; pid: number; success: boolean; escalated?: boolean }>;
   notRunning: string[];
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -188,6 +188,54 @@ describe('environment state concurrency', () => {
       for (const result of results) {
         expect(result.ports).toEqual(first.ports);
       }
+    });
+  });
+
+  describe('crash recovery', () => {
+    it('.tmp exists with valid data, main is corrupt — readState recovers from .tmp', async () => {
+      const config = makeConfig(testDir);
+      const stateDir = join(testDir, '.grove');
+      mkdirSync(stateDir, { recursive: true });
+
+      // Simulate a crash: .tmp has valid state, main is truncated
+      const validState = makeState('main', { api: 10000, webapp: 10001 });
+      writeFileSync(join(stateDir, 'main.json'), '{"truncated": ', 'utf-8');
+      writeFileSync(join(stateDir, 'main.json.tmp'), JSON.stringify(validState, null, 2), 'utf-8');
+
+      const result = readState(config);
+
+      expect(result).not.toBeNull();
+      expect(result!.namespace).toBe('testapp-main');
+      expect(result!.ports.api).toBe(10000);
+
+      // .tmp should have been promoted to main
+      expect(existsSync(join(stateDir, 'main.json'))).toBe(true);
+      const content = readFileSync(join(stateDir, 'main.json'), 'utf-8');
+      const parsed = JSON.parse(content);
+      expect(parsed.namespace).toBe('testapp-main');
+    });
+
+    it('.tmp exists but is also corrupt — readState returns null', async () => {
+      const config = makeConfig(testDir);
+      const stateDir = join(testDir, '.grove');
+      mkdirSync(stateDir, { recursive: true });
+
+      writeFileSync(join(stateDir, 'main.json'), 'corrupt{', 'utf-8');
+      writeFileSync(join(stateDir, 'main.json.tmp'), 'also corrupt{', 'utf-8');
+
+      const result = readState(config);
+      expect(result).toBeNull();
+    });
+
+    it('writeState leaves no .tmp file on success', async () => {
+      const config = makeConfig(testDir);
+      const state = makeState('main', { api: 10000, webapp: 10001 });
+
+      await writeState(state, config);
+
+      const stateDir = join(testDir, '.grove');
+      expect(existsSync(join(stateDir, 'main.json'))).toBe(true);
+      expect(existsSync(join(stateDir, 'main.json.tmp'))).toBe(false);
     });
   });
 

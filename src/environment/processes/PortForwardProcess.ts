@@ -61,11 +61,46 @@ export class PortForwardProcess {
     };
   }
 
-  static async stopByPid(pid: number): Promise<void> {
+  static async stopByPid(pid: number, timeoutMs: number = 5000): Promise<{ killed: boolean; escalated: boolean }> {
+    // Check if already dead
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return { killed: true, escalated: false };
+    }
+
+    // SIGTERM
     try {
       process.kill(pid, 'SIGTERM');
-    } catch (error) {
-      // Process might already be dead
+    } catch {
+      return { killed: true, escalated: false };
+    }
+
+    // Poll for death
+    const pollInterval = 100;
+    const maxPolls = Math.ceil(timeoutMs / pollInterval);
+    for (let i = 0; i < maxPolls; i++) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      try {
+        process.kill(pid, 0);
+      } catch {
+        return { killed: true, escalated: false };
+      }
+    }
+
+    // SIGKILL escalation
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      return { killed: true, escalated: true };
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+    try {
+      process.kill(pid, 0);
+      return { killed: false, escalated: true };
+    } catch {
+      return { killed: true, escalated: true };
     }
   }
 }

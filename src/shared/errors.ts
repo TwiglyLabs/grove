@@ -38,8 +38,14 @@ export class ConfigNotFoundError extends GroveError {
 }
 
 export class ConfigValidationError extends GroveError {
-  constructor(public issues: unknown[]) {
-    super('CONFIG_INVALID', `Config validation failed: ${issues.length} issue(s)`);
+  constructor(public issues: Array<{ path?: (string | number)[]; message?: string }>) {
+    const details = issues
+      .map(i => {
+        const path = i.path?.join('.') || '(root)';
+        return `${path}: ${i.message || 'invalid'}`;
+      })
+      .join(', ');
+    super('CONFIG_INVALID', `Config validation failed: ${details}`);
   }
 }
 
@@ -114,5 +120,49 @@ export class PreflightFailedError extends GroveError {
 export class PortForwardFailedError extends GroveError {
   constructor(public service: string, public port: number) {
     super('PORT_FORWARD_FAILED', `Port forward failed for ${service} on port ${port}`);
+  }
+}
+
+// --- Frontend ---
+
+export class FrontendStartFailedError extends GroveError {
+  constructor(public frontend: string, cause?: unknown) {
+    super('FRONTEND_START_FAILED', `Frontend ${frontend} failed to start${cause ? `: ${cause}` : ''}`);
+  }
+}
+
+// --- Build pipeline ---
+
+export class BuildFailedError extends GroveError {
+  constructor(public service: string, cause?: unknown) {
+    super('BUILD_FAILED', `Failed to build ${service}${cause ? `: ${cause}` : ''}`);
+  }
+}
+
+export class ImageLoadFailedError extends GroveError {
+  constructor(public service: string, public providerType: string, cause?: unknown) {
+    super('IMAGE_LOAD_FAILED', `Failed to load ${service} to ${providerType}${cause ? `: ${cause}` : ''}`);
+  }
+}
+
+// --- Namespace ---
+
+export class NamespaceDeletionFailedError extends GroveError {
+  constructor(public namespace: string, cause?: unknown) {
+    super('NAMESPACE_DELETION_FAILED', `Failed to delete namespace ${namespace}${cause ? `: ${cause}` : ''}`);
+  }
+}
+
+// --- State ---
+
+export class StateWriteFailedError extends GroveError {
+  constructor(cause?: unknown) {
+    super('STATE_WRITE_FAILED', `Failed to write state${cause ? `: ${cause}` : ''}`);
+  }
+}
+
+export class StateCorruptedError extends GroveError {
+  constructor(public filePath: string) {
+    super('STATE_CORRUPTED', `State file corrupted: ${filePath}`);
   }
 }

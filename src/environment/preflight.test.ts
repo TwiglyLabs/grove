@@ -167,6 +167,30 @@ describe('runPreflightChecks', () => {
     expect(printWarning).toHaveBeenCalled();
   });
 
+  it('passes timeout option to execSync', async () => {
+    mockExecSync.mockReturnValue(Buffer.from(''));
+
+    await runPreflightChecks(testConfig);
+
+    // Every execSync call should include a timeout option
+    for (const call of mockExecSync.mock.calls) {
+      expect(call[1]).toHaveProperty('timeout', 5000);
+    }
+  });
+
+  it('treats command timeout as a failed check', async () => {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd === 'docker info') {
+        const err = new Error('Command timed out');
+        (err as any).killed = true;
+        throw err;
+      }
+      return Buffer.from('');
+    });
+
+    await expect(runPreflightChecks(testConfig)).rejects.toThrow(PreflightFailedError);
+  });
+
   it('skips port checks when no state file exists', async () => {
     mockExecSync.mockReturnValue(Buffer.from(''));
     vi.mocked(readState).mockReturnValue(null);

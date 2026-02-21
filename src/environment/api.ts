@@ -5,13 +5,13 @@
  * All operations accept RepoId and resolve config/state internally.
  */
 
-import { spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { load as loadConfig } from '../shared/config.js';
 import type { GroveConfig } from '../config.js';
 import type { RepoId } from '../shared/identity.js';
-import { EnvironmentNotRunningError } from '../shared/errors.js';
+import { EnvironmentNotRunningError, NamespaceDeletionFailedError } from '../shared/errors.js';
 import type {
   EnvironmentEvents,
   UpOptions,
@@ -23,14 +23,18 @@ import type {
   PruneOptions,
   PruneResult,
   HealthCheckResult,
+  SupervisorHandle,
 } from './types.js';
 
 import { ensureEnvironment as internalEnsure } from './controller.js';
-import { readState as internalReadState, releasePortBlock } from './state.js';
+import { readState as internalReadState, releasePortBlock, writeState } from './state.js';
 import { FileWatcher } from './watcher.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
 import { createClusterProvider } from './providers/index.js';
 import { Timer } from './timing.js';
+
+/** Module-level supervisor reference for lifecycle management. */
+let activeSupervisor: SupervisorHandle | null = null;
 
 function isProcessRunning(pid: number): boolean {
   try {
@@ -39,6 +43,52 @@ function isProcessRunning(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Kill a process with SIGTERM→wait→SIGKILL escalation.
+ * Returns whether the process was killed and whether SIGKILL was needed.
+ */
+export async function killProcess(
+  pid: number,
+  timeoutMs: number = 5000,
+): Promise<{ killed: boolean; escalated: boolean }> {
+  if (!isProcessRunning(pid)) {
+    return { killed: true, escalated: false };
+  }
+
+  // Phase 1: SIGTERM
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch {
+    return { killed: true, escalated: false };
+  }
+
+  // Phase 2: Poll for death
+  const pollInterval = 100;
+  const maxPolls = Math.ceil(timeoutMs / pollInterval);
+  for (let i = 0; i < maxPolls; i++) {
+    await sleep(pollInterval);
+    if (!isProcessRunning(pid)) {
+      return { killed: true, escalated: false };
+    }
+  }
+
+  // Phase 3: SIGKILL escalation
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    return { killed: true, escalated: true };
+  }
+
+  // Phase 4: Verify dead
+  await sleep(200);
+  const dead = !isProcessRunning(pid);
+  return { killed: dead, escalated: true };
 }
 
 /**
@@ -52,10 +102,15 @@ export async function up(
   const config = await loadConfig(repo);
   const timer = new Timer();
 
-  const { state, health } = await internalEnsure(config, {
+  const { state, health, supervisor } = await internalEnsure(config, {
     frontend: options?.frontend,
     all: options?.all,
   });
+
+  // Track supervisor for lifecycle management
+  if (supervisor) {
+    activeSupervisor = supervisor;
+  }
 
   return {
     state,
@@ -63,11 +118,13 @@ export async function up(
     ports: state.ports,
     duration: timer.elapsed(),
     health,
+    supervisor,
   };
 }
 
 /**
  * Stop all processes, keep namespace and state.
+ * Uses SIGTERM→wait→SIGKILL escalation and cleans dead entries from state.
  */
 export async function down(
   repo: RepoId,
@@ -81,28 +138,47 @@ export async function down(
     return { stopped: [], notRunning: [] };
   }
 
+  // Stop supervisor before killing processes
+  if (activeSupervisor) {
+    activeSupervisor.stop();
+    activeSupervisor = null;
+  }
+
   const stopped: DownResult['stopped'] = [];
   const notRunning: string[] = [];
 
   for (const [name, processInfo] of Object.entries(state.processes)) {
     if (!isProcessRunning(processInfo.pid)) {
       notRunning.push(name);
+      delete state.processes[name];
       continue;
     }
 
-    try {
-      process.kill(processInfo.pid, 'SIGTERM');
-      stopped.push({ name, pid: processInfo.pid, success: true });
-    } catch {
-      stopped.push({ name, pid: processInfo.pid, success: false });
+    const result = await killProcess(processInfo.pid);
+    stopped.push({
+      name,
+      pid: processInfo.pid,
+      success: result.killed,
+      escalated: result.escalated,
+    });
+
+    if (result.killed) {
+      delete state.processes[name];
     }
+  }
+
+  // Write cleaned state
+  try {
+    await writeState(state, config);
+  } catch {
+    // Best-effort state cleanup
   }
 
   return { stopped, notRunning };
 }
 
 /**
- * Stop processes, delete namespace, remove state.
+ * Stop processes, delete namespace (waiting for completion), remove state.
  */
 export async function destroy(
   repo: RepoId,
@@ -124,19 +200,16 @@ export async function destroy(
     };
   }
 
-  // Delete namespace
+  // Delete namespace — wait for full deletion to prevent stale resources on quick destroy→up
   let namespaceDeleted = false;
   try {
-    const proc = spawn('kubectl', ['delete', 'namespace', state.namespace], {
-      stdio: 'pipe',
-    });
-    await new Promise<void>((resolve) => {
-      proc.on('exit', () => resolve());
-      proc.on('error', () => resolve());
-    });
+    execSync(
+      `kubectl delete namespace ${state.namespace} --wait=true --timeout=60s`,
+      { stdio: 'pipe', timeout: 70_000 },
+    );
     namespaceDeleted = true;
   } catch {
-    // Namespace may not exist
+    // Namespace may not exist or deletion timed out
   }
 
   // Remove state file
@@ -240,7 +313,7 @@ export async function watch(
     throw new EnvironmentNotRunningError();
   }
 
-  const watcher = new FileWatcher(config, state);
+  const watcher = new FileWatcher(config, state, events);
   watcher.start();
 
   return {

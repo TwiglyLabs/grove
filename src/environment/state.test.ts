@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { GroveConfig } from '../config.js';
 
-const { mockExecSync, mockReadFileSync, mockWriteFileSync, mockMkdirSync, mockReaddirSync, mockUnlinkSync, mockExistsSync, mockLockSync, mockLock, mockRelease } = vi.hoisted(() => ({
+const { mockExecSync, mockReadFileSync, mockWriteFileSync, mockMkdirSync, mockReaddirSync, mockUnlinkSync, mockRenameSync, mockExistsSync, mockLockSync, mockLock, mockRelease } = vi.hoisted(() => ({
   mockExecSync: vi.fn(),
   mockReadFileSync: vi.fn(),
   mockWriteFileSync: vi.fn(),
   mockMkdirSync: vi.fn(),
   mockReaddirSync: vi.fn(),
   mockUnlinkSync: vi.fn(),
+  mockRenameSync: vi.fn(),
   mockExistsSync: vi.fn(),
   mockLockSync: vi.fn(),
   mockLock: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('fs', () => ({
   mkdirSync: mockMkdirSync,
   readdirSync: mockReaddirSync,
   unlinkSync: mockUnlinkSync,
+  renameSync: mockRenameSync,
 }));
 
 vi.mock('proper-lockfile', () => ({
@@ -36,7 +38,8 @@ vi.mock('proper-lockfile', () => ({
   lock: mockLock,
 }));
 
-import { readState, allocatePortBlock, releasePortBlock, loadOrCreateState, writeState } from './state.js';
+import { readState, allocatePortBlock, releasePortBlock, loadOrCreateState, writeState, validateState } from './state.js';
+import { StateWriteFailedError } from '../shared/errors.js';
 
 function makeConfig(overrides: Partial<GroveConfig> = {}): GroveConfig {
   return {
@@ -87,9 +90,58 @@ describe('readState', () => {
     expect(result).toEqual(state);
   });
 
-  it('returns null when file contains invalid JSON', () => {
-    mockExistsSync.mockReturnValue(true);
+  it('returns null when file contains invalid JSON and no .tmp exists', () => {
+    mockExistsSync.mockImplementation((path: string) => {
+      if (path.endsWith('.tmp')) return false;
+      return true;
+    });
     mockReadFileSync.mockReturnValue('invalid json{');
+
+    const result = readState(makeConfig());
+
+    expect(result).toBeNull();
+  });
+
+  it('recovers from .tmp when main file is corrupt', () => {
+    const validState = {
+      namespace: 'testapp-feature--test-branch',
+      branch: 'feature/test-branch',
+      worktreeId: 'feature--test-branch',
+      ports: { api: 10000 },
+      urls: {},
+      processes: {},
+      lastEnsure: '2026-02-11T10:00:00Z',
+    };
+
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockImplementation((path: string) => {
+      if (typeof path === 'string' && path.endsWith('.tmp')) {
+        return JSON.stringify(validState);
+      }
+      return 'corrupt data{{{';
+    });
+
+    const result = readState(makeConfig());
+
+    expect(result).toEqual(validState);
+    expect(mockRenameSync).toHaveBeenCalled();
+  });
+
+  it('returns null when both main and .tmp are corrupt', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue('corrupt{{{');
+
+    const result = readState(makeConfig());
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when main file has invalid state structure', () => {
+    mockExistsSync.mockImplementation((path: string) => {
+      if (path.endsWith('.tmp')) return false;
+      return true;
+    });
+    mockReadFileSync.mockReturnValue(JSON.stringify({ foo: 'bar' }));
 
     const result = readState(makeConfig());
 
@@ -102,7 +154,42 @@ describe('readState', () => {
 
     readState(makeConfig());
 
-    expect(mockExecSync).toHaveBeenCalledWith('git branch --show-current', { encoding: 'utf-8' });
+    expect(mockExecSync).toHaveBeenCalledWith('git branch --show-current', { encoding: 'utf-8', timeout: 3000 });
+  });
+});
+
+describe('validateState', () => {
+  it('accepts valid state', () => {
+    expect(validateState({
+      namespace: 'ns',
+      worktreeId: 'wt',
+      ports: {},
+      processes: {},
+    })).toBe(true);
+  });
+
+  it('rejects null', () => {
+    expect(validateState(null)).toBe(false);
+  });
+
+  it('rejects non-object', () => {
+    expect(validateState('string')).toBe(false);
+  });
+
+  it('rejects missing namespace', () => {
+    expect(validateState({ worktreeId: 'wt', ports: {}, processes: {} })).toBe(false);
+  });
+
+  it('rejects missing worktreeId', () => {
+    expect(validateState({ namespace: 'ns', ports: {}, processes: {} })).toBe(false);
+  });
+
+  it('rejects missing ports', () => {
+    expect(validateState({ namespace: 'ns', worktreeId: 'wt', processes: {} })).toBe(false);
+  });
+
+  it('rejects missing processes', () => {
+    expect(validateState({ namespace: 'ns', worktreeId: 'wt', ports: {} })).toBe(false);
   });
 });
 
@@ -334,7 +421,7 @@ describe('writeState', () => {
     mockLock.mockResolvedValue(mockRelease);
   });
 
-  it('writes state to the correct file path', async () => {
+  it('writes to .tmp then renames to main file (atomic write)', async () => {
     mockExistsSync.mockReturnValue(true);
     const state = {
       namespace: 'testapp-test-branch',
@@ -348,10 +435,16 @@ describe('writeState', () => {
 
     await writeState(state, makeConfig());
 
+    // Should write to .tmp file
     expect(mockWriteFileSync).toHaveBeenCalledWith(
-      '/tmp/test-repo/.grove/test-branch.json',
+      '/tmp/test-repo/.grove/test-branch.json.tmp',
       expect.stringContaining('"namespace": "testapp-test-branch"'),
       'utf-8'
+    );
+    // Should rename .tmp to main
+    expect(mockRenameSync).toHaveBeenCalledWith(
+      '/tmp/test-repo/.grove/test-branch.json.tmp',
+      '/tmp/test-repo/.grove/test-branch.json'
     );
   });
 
@@ -420,7 +513,7 @@ describe('writeState', () => {
     expect(new Date(parsed.lastEnsure).getTime()).toBeGreaterThan(new Date('2026-02-11T10:00:00Z').getTime());
   });
 
-  it('throws when lock fails', async () => {
+  it('throws StateWriteFailedError when lock fails', async () => {
     mockExistsSync.mockReturnValue(true);
     mockLock.mockRejectedValue(new Error('Lock timeout'));
     const state = {
@@ -433,6 +526,23 @@ describe('writeState', () => {
       lastEnsure: '2026-02-11T10:00:00Z',
     };
 
-    await expect(writeState(state, makeConfig())).rejects.toThrow('Failed to write state');
+    await expect(writeState(state, makeConfig())).rejects.toThrow(StateWriteFailedError);
+  });
+
+  it('cleans up .tmp file on failure', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockRenameSync.mockImplementation(() => { throw new Error('rename failed'); });
+    const state = {
+      namespace: 'testapp-test-branch',
+      branch: 'test-branch',
+      worktreeId: 'test-branch',
+      ports: { api: 10000 },
+      urls: { api: 'http://127.0.0.1:10000' },
+      processes: {},
+      lastEnsure: '2026-02-11T10:00:00Z',
+    };
+
+    await expect(writeState(state, makeConfig())).rejects.toThrow(StateWriteFailedError);
+    expect(mockUnlinkSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json.tmp');
   });
 });
