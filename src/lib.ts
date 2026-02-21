@@ -62,9 +62,6 @@ export type {
   CloseResult,
 } from './workspace/types.js';
 
-// Request types
-export type { RequestOptions, RequestResult } from './request/types.js';
-
 // Testing types
 export type {
   TestRunOptions,
@@ -90,11 +87,10 @@ export type { GroveConfig, WorkspaceConfig } from './config.js';
 import * as repo from './repo/api.js';
 import * as config from './shared/config.js';
 import * as workspace from './workspace/api.js';
-import * as request from './request/api.js';
 import * as environment from './environment/api.js';
 import * as testing from './testing/api.js';
 import * as logs from './logs/api.js';
 import * as shell from './shell/api.js';
 import * as simulator from './simulator/api.js';
 
-export { repo, config, workspace, request, environment, testing, logs, shell, simulator };
+export { repo, config, workspace, environment, testing, logs, shell, simulator };

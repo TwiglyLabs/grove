@@ -44,7 +44,6 @@ vi.mock('./testing/cli.js', () => ({ testCommand: vi.fn() }));
 vi.mock('./shell/cli.js', () => ({ shellCommand: vi.fn() }));
 vi.mock('./workspace/cli.js', () => ({ workspaceCommand: vi.fn() }));
 vi.mock('./repo/cli.js', () => ({ repoCommand: vi.fn() }));
-vi.mock('./request/cli.js', () => ({ requestCommand: vi.fn() }));
 
 import { resolveCurrentRepo, program } from './cli.js';
 import { execSync } from 'child_process';
@@ -159,7 +158,6 @@ describe('program', () => {
     it.each([
       'repo',
       'workspace',
-      'request',
       'up',
       'down',
       'destroy',
@@ -174,8 +172,8 @@ describe('program', () => {
       expect(commandNames).toContain(name);
     });
 
-    it('registers exactly 13 commands', () => {
-      expect(program.commands).toHaveLength(13);
+    it('registers exactly 12 commands', () => {
+      expect(program.commands).toHaveLength(12);
     });
   });
 

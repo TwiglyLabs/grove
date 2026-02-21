@@ -7,7 +7,6 @@ describe('lib (public API barrel)', () => {
       'repo',
       'config',
       'workspace',
-      'request',
       'environment',
       'testing',
       'logs',

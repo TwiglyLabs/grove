@@ -26,7 +26,6 @@ import { testCommand } from './testing/cli.js';
 import { shellCommand } from './shell/cli.js';
 import { workspaceCommand } from './workspace/cli.js';
 import { repoCommand } from './repo/cli.js';
-import { requestCommand } from './request/cli.js';
 
 /**
  * Resolve the current repo from cwd. Finds the git root, then looks up
@@ -85,19 +84,6 @@ program
   .action(async (_options, cmd) => {
     try {
       await workspaceCommand(cmd.args);
-    } catch (error) {
-      handleError(error);
-    }
-  });
-
-program
-  .command('request')
-  .description('File a cross-repo plan request')
-  .allowUnknownOption()
-  .allowExcessArguments()
-  .action(async (_options, cmd) => {
-    try {
-      await requestCommand(cmd.args);
     } catch (error) {
       handleError(error);
     }
