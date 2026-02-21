@@ -1,6 +1,6 @@
 ---
 title: Error Infrastructure & API Surface
-status: not_started
+status: done
 description: >-
   Fix error subclassing, missing lib.ts re-exports, supervisor off-by-one,
   untested error classes
@@ -10,6 +10,7 @@ tags:
   - 'epic:reliability-hardening'
 type: bugfix
 not_started_at: '2026-02-21T20:29:12.225Z'
+completed_at: '2026-02-21T20:58:19.127Z'
 ---
 
 ## Problem

@@ -207,12 +207,10 @@ describe('PortForwardSupervisor', () => {
 
       // Attempt 1 — fails recovery
       await supervisor.checkAll();
-      // Attempt 2 — fails recovery
-      await supervisor.checkAll();
-      // Attempt 3 — gives up (failureCount > maxRecoveryAttempts)
+      // Attempt 2 — gives up (failureCount >= maxRecoveryAttempts)
       await supervisor.checkAll();
 
-      expect(events.onGiveUp).toHaveBeenCalledWith('api', 3);
+      expect(events.onGiveUp).toHaveBeenCalledWith('api', 2);
     });
 
     it('skips recovery when forward is already recovering', async () => {
@@ -270,9 +268,8 @@ describe('PortForwardSupervisor', () => {
       });
       supervisor.register(makeService(), makePfConfig(), makeProcessInfo());
 
-      // Exhaust recovery attempts
-      await supervisor.checkAll(); // attempt 1
-      await supervisor.checkAll(); // gives up
+      // Exhaust recovery attempts — gives up after 1 (failureCount >= maxRecoveryAttempts)
+      await supervisor.checkAll();
 
       // Further checks skip this service
       const results = await supervisor.checkAll();

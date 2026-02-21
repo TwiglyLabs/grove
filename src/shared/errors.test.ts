@@ -13,6 +13,8 @@ import {
   PodNotFoundError,
   LogStreamFailedError,
   AbortError,
+  PreflightFailedError,
+  PortForwardFailedError,
   FrontendStartFailedError,
   BuildFailedError,
   ImageLoadFailedError,
@@ -32,6 +34,13 @@ describe('GroveError', () => {
   it('is an instance of Error', () => {
     const err = new GroveError('X', 'y');
     expect(err).toBeInstanceOf(Error);
+  });
+
+  it('preserves prototype chain for subclasses', () => {
+    const err = new BuildFailedError('svc');
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(GroveError);
+    expect(err).toBeInstanceOf(BuildFailedError);
   });
 });
 
@@ -138,6 +147,31 @@ describe('error classes', () => {
   it('AbortError', () => {
     const err = new AbortError();
     expect(err.code).toBe('ABORTED');
+    expect(err).toBeInstanceOf(GroveError);
+  });
+
+  it('PreflightFailedError', () => {
+    const checks = [
+      { name: 'docker', message: 'not running' },
+      { name: 'kubectl' },
+    ];
+    const err = new PreflightFailedError(checks);
+    expect(err.code).toBe('PREFLIGHT_FAILED');
+    expect(err.checks).toBe(checks);
+    expect(err.message).toContain('docker');
+    expect(err.message).toContain('not running');
+    expect(err.message).toContain('kubectl');
+    expect(err.message).toContain('not available');
+    expect(err).toBeInstanceOf(GroveError);
+  });
+
+  it('PortForwardFailedError', () => {
+    const err = new PortForwardFailedError('api', 3000);
+    expect(err.code).toBe('PORT_FORWARD_FAILED');
+    expect(err.service).toBe('api');
+    expect(err.port).toBe(3000);
+    expect(err.message).toContain('api');
+    expect(err.message).toContain('3000');
     expect(err).toBeInstanceOf(GroveError);
   });
 

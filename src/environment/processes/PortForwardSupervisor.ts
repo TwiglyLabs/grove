@@ -108,7 +108,7 @@ export class PortForwardSupervisor {
       } else {
         forward.failureCount++;
 
-        if (forward.failureCount > this.maxRecoveryAttempts) {
+        if (forward.failureCount >= this.maxRecoveryAttempts) {
           forward.gaveUp = true;
           this.events?.onGiveUp?.(name, forward.failureCount);
           results.push({ service: name, healthy: false, recovered: false, gaveUp: true });

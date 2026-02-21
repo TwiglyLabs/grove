@@ -11,6 +11,7 @@ export class GroveError extends Error {
     message: string,
   ) {
     super(message);
+    Object.setPrototypeOf(this, new.target.prototype);
     this.name = 'GroveError';
   }
 }

@@ -20,6 +20,7 @@ export {
   PodNotFoundError,
   LogStreamFailedError,
   AbortError,
+  PreflightFailedError,
   PortForwardFailedError,
   FrontendStartFailedError,
   BuildFailedError,
@@ -57,7 +58,12 @@ export type {
   StaleStateFileEntry,
   OrphanedWorktreeEntry,
   OrphanedNamespaceEntry,
+  EnvironmentState,
+  ProcessInfo,
 } from './environment/types.js';
+
+// Watcher types
+export type { WatcherOptions } from './environment/watcher.js';
 
 // Workspace types
 export type {

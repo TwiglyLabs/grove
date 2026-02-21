@@ -33,6 +33,14 @@ describe('lib (public API barrel)', () => {
       'PodNotFoundError',
       'LogStreamFailedError',
       'AbortError',
+      'PreflightFailedError',
+      'PortForwardFailedError',
+      'FrontendStartFailedError',
+      'BuildFailedError',
+      'ImageLoadFailedError',
+      'NamespaceDeletionFailedError',
+      'StateWriteFailedError',
+      'StateCorruptedError',
     ])('exports %s', (name) => {
       const exported = (lib as any)[name];
       expect(exported).toBeDefined();
