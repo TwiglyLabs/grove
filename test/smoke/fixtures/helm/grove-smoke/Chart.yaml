@@ -1,0 +1,5 @@
+apiVersion: v2
+name: grove-smoke
+description: Smoke test services for Grove
+version: 0.1.0
+type: application

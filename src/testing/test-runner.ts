@@ -283,10 +283,11 @@ export async function runTests(config: GroveConfig, options: TestOptions): Promi
   // Read existing state or auto-ensure
   if (!state && !options.noEnsure) {
     console.log(`[test] No environment found. Running grove up for ${options.platform}...`);
-    state = await ensureEnvironment(config, {
+    const ensureResult = await ensureEnvironment(config, {
       frontend: options.platform === 'mobile' ? 'mobile' :
                 options.platform === 'webapp' ? 'webapp' : undefined,
     });
+    state = ensureResult.state ?? (ensureResult as unknown as EnvironmentState);
     console.log(`[test] Environment ready`);
   }
 

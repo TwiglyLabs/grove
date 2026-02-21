@@ -1,0 +1,61 @@
+project:
+  name: grove-smoke
+  cluster: grove-smoke
+  clusterType: k3s
+
+helm:
+  chart: test/smoke/fixtures/helm/grove-smoke
+  release: grove-smoke
+  valuesFiles:
+    - test/smoke/fixtures/helm/grove-smoke/values.yaml
+
+services:
+  - name: smoke-auth
+    build:
+      image: smoke-auth:latest
+      dockerfile: test/smoke/fixtures/services/smoke-auth/Dockerfile
+    portForward:
+      remotePort: 8080
+    health:
+      path: /health
+      protocol: http
+
+  - name: smoke-api
+    build:
+      image: smoke-api:latest
+      dockerfile: test/smoke/fixtures/services/smoke-api/Dockerfile
+    portForward:
+      remotePort: 8080
+    health:
+      path: /health
+      protocol: http
+
+  - name: smoke-agent
+    build:
+      image: smoke-agent:latest
+      dockerfile: test/smoke/fixtures/services/smoke-agent/Dockerfile
+    portForward:
+      remotePort: 8080
+    health:
+      path: /health
+      protocol: http
+
+  - name: smoke-mcp
+    build:
+      image: smoke-mcp:latest
+      dockerfile: test/smoke/fixtures/services/smoke-mcp/Dockerfile
+    portForward:
+      remotePort: 8080
+    health:
+      path: /health
+      protocol: http
+
+frontends:
+  - name: webapp
+    command: npx vite
+    cwd: test/smoke/fixtures/frontend
+    env:
+      GROVE_API_URL: "http://127.0.0.1:{{ports.smoke-api}}"
+    health:
+      path: /
+      protocol: http

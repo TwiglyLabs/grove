@@ -2,6 +2,8 @@ import { spawn } from 'child_process';
 import { openSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { ProcessInfo } from '../types.js';
+import { checkTcpReady } from '../health.js';
+import { PortForwardFailedError } from '../../shared/errors.js';
 
 export interface PortForwardConfig {
   namespace: string;
@@ -46,8 +48,12 @@ export class PortForwardProcess {
 
     child.unref();
 
-    // Wait a bit for the port forward to establish
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Verify port is actually bound
+    const bound = await checkTcpReady(hostIp, localPort, 5000, 200);
+    if (!bound) {
+      try { process.kill(child.pid!, 'SIGTERM'); } catch {}
+      throw new PortForwardFailedError(serviceName, localPort);
+    }
 
     return {
       pid: child.pid!,

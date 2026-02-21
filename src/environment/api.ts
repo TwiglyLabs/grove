@@ -22,6 +22,7 @@ import type {
   WatchHandle,
   PruneOptions,
   PruneResult,
+  HealthCheckResult,
 } from './types.js';
 
 import { ensureEnvironment as internalEnsure } from './controller.js';
@@ -51,7 +52,7 @@ export async function up(
   const config = await loadConfig(repo);
   const timer = new Timer();
 
-  const state = await internalEnsure(config, {
+  const { state, health } = await internalEnsure(config, {
     frontend: options?.frontend,
     all: options?.all,
   });
@@ -61,6 +62,7 @@ export async function up(
     urls: state.urls,
     ports: state.ports,
     duration: timer.elapsed(),
+    health,
   };
 }
 

@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-mcp
+  labels:
+    {{- include "grove-smoke.labels" . | nindent 4 }}
+    app: {{ .Release.Name }}-mcp
+spec:
+  replicas: {{ .Values.mcp.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-mcp
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-mcp
+    spec:
+      containers:
+        - name: smoke-mcp
+          image: {{ .Values.mcp.image }}
+          imagePullPolicy: Never
+          ports:
+            - containerPort: {{ .Values.mcp.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.mcp.port | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.mcp.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.mcp.port }}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-mcp
+  labels:
+    {{- include "grove-smoke.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}-mcp
+  ports:
+    - port: {{ .Values.mcp.port }}
+      targetPort: {{ .Values.mcp.port }}

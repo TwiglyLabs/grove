@@ -101,3 +101,18 @@ export class AbortError extends GroveError {
     super('ABORTED', 'Operation was aborted');
   }
 }
+
+// --- Preflight ---
+
+export class PreflightFailedError extends GroveError {
+  constructor(public checks: Array<{ name: string; message?: string }>) {
+    const failed = checks.map((c) => `  - ${c.name}: ${c.message || 'not available'}`).join('\n');
+    super('PREFLIGHT_FAILED', `Preflight checks failed:\n${failed}`);
+  }
+}
+
+export class PortForwardFailedError extends GroveError {
+  constructor(public service: string, public port: number) {
+    super('PORT_FORWARD_FAILED', `Port forward failed for ${service} on port ${port}`);
+  }
+}

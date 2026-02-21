@@ -1,15 +1,16 @@
 import { execSync } from 'child_process';
 import { join } from 'path';
 import type { GroveConfig } from '../config.js';
-import type { EnvironmentState } from './types.js';
+import type { EnvironmentState, HealthCheckResult } from './types.js';
 import { ensureCluster, ensureNamespace } from './cluster.js';
 import { loadOrCreateState, writeState } from './state.js';
 import { runBootstrapChecks } from './bootstrap.js';
+import { runPreflightChecks } from './preflight.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
 import { createClusterProvider } from './providers/index.js';
 import { PortForwardProcess } from './processes/PortForwardProcess.js';
 import { GenericDevServer } from './frontends/GenericDevServer.js';
-import { waitForHealth } from './health.js';
+import { waitForHealth, waitForHealthResult } from './health.js';
 import { printInfo, printSuccess, printError, printSection } from '../shared/output.js';
 import { Timer } from './timing.js';
 
@@ -93,8 +94,9 @@ async function startFrontends(config: GroveConfig, state: EnvironmentState, opti
   }
 }
 
-async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Promise<void> {
+async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Promise<HealthCheckResult[]> {
   printSection('Running health checks');
+  const results: HealthCheckResult[] = [];
 
   // Health check services (only those with port-forwards)
   for (const service of config.services) {
@@ -108,9 +110,10 @@ async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Pro
 
     printInfo(`Health checking ${service.name}...`);
 
-    const healthy = await waitForHealth(protocol, '127.0.0.1', port, path, 30, 1000);
+    const result = await waitForHealthResult(service.name, protocol, '127.0.0.1', port, path, 30, 1000);
+    results.push(result);
 
-    if (healthy) {
+    if (result.healthy) {
       printSuccess(`${service.name} is healthy`);
     } else {
       printError(`${service.name} health check failed`);
@@ -130,21 +133,30 @@ async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Pro
 
       printInfo(`Health checking ${frontend.name}...`);
 
-      const healthy = await waitForHealth(protocol, '127.0.0.1', port, path, 30, 1000);
+      const result = await waitForHealthResult(frontend.name, protocol, '127.0.0.1', port, path, 30, 1000);
+      results.push(result);
 
-      if (healthy) {
+      if (result.healthy) {
         printSuccess(`${frontend.name} is healthy`);
       } else {
         printError(`${frontend.name} health check failed`);
       }
     }
   }
+
+  return results;
 }
 
-export async function ensureEnvironment(config: GroveConfig, options: { frontend?: string; all?: boolean } = {}): Promise<EnvironmentState> {
+export async function ensureEnvironment(
+  config: GroveConfig,
+  options: { frontend?: string; all?: boolean } = {}
+): Promise<{ state: EnvironmentState; health: HealthCheckResult[] }> {
   const timer = new Timer();
 
   const provider = createClusterProvider(config.project.clusterType);
+
+  printSection('Preflight Checks');
+  await runPreflightChecks(config);
 
   printSection('Ensuring Cluster');
   ensureCluster(provider, config.project.cluster);
@@ -169,7 +181,7 @@ export async function ensureEnvironment(config: GroveConfig, options: { frontend
 
   await startPortForwards(config, state);
   await startFrontends(config, state, options);
-  await healthCheckAll(config, state);
+  const healthResults = await healthCheckAll(config, state);
 
   printSection('Saving State');
   await writeState(state, config);
@@ -177,5 +189,5 @@ export async function ensureEnvironment(config: GroveConfig, options: { frontend
 
   printSuccess(`Environment ready in ${timer.format()}`);
 
-  return state;
+  return { state, health: healthResults };
 }

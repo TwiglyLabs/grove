@@ -58,6 +58,7 @@ export interface UpResult {
   urls: Record<string, string>;
   ports: Record<string, number>;
   duration: number;
+  health: HealthCheckResult[];
 }
 
 export interface DownResult {
@@ -132,6 +133,27 @@ export interface PruneResult {
   orphanedWorktrees: OrphanedWorktreeEntry[];
   orphanedNamespaces: OrphanedNamespaceEntry[];
   dryRun: boolean;
+}
+
+export interface PreflightCheck {
+  name: string;
+  passed: boolean;
+  message?: string;
+}
+
+export interface PreflightResult {
+  passed: boolean;
+  checks: PreflightCheck[];
+}
+
+export interface HealthCheckResult {
+  target: string;
+  healthy: boolean;
+  protocol: 'http' | 'tcp';
+  port: number;
+  attempts: number;
+  elapsedMs: number;
+  error?: string;
 }
 
 // --- Event types (from src/api/events.ts) ---

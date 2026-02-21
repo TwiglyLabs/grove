@@ -1,0 +1,22 @@
+auth:
+  replicas: 1
+  port: 8080
+  image: smoke-auth:latest
+
+api:
+  replicas: 1
+  port: 8080
+  image: smoke-api:latest
+
+agent:
+  replicas: 1
+  port: 8080
+  image: smoke-agent:latest
+
+mcp:
+  replicas: 1
+  port: 8080
+  image: smoke-mcp:latest
+
+jwt:
+  secret: smoke-test-secret-key
