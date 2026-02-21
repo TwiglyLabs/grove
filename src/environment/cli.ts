@@ -182,19 +182,45 @@ export async function watchCommand(repoId: RepoId): Promise<void> {
 
 // --- Prune ---
 
-export async function pruneCommand(repoId: RepoId): Promise<void> {
-  printInfo('Checking for orphaned resources...');
+export async function pruneCommand(repoId: RepoId, options?: { dryRun?: boolean }): Promise<void> {
+  const dryRun = options?.dryRun ?? false;
+  printInfo(dryRun ? 'Checking for orphaned resources (dry run)...' : 'Checking for orphaned resources...');
 
-  const result = await api.prune(repoId);
+  const result = await api.prune(repoId, { dryRun });
 
-  for (const ns of result.deleted) {
-    printSuccess(`Deleted orphaned namespace: ${ns}`);
+  const prefix = dryRun ? '[dry run] Would clean' : 'Cleaned';
+
+  for (const entry of result.stoppedProcesses) {
+    printWarning(`${prefix} dead process: ${entry.processName} (PID ${entry.pid}) in ${entry.stateFile}`);
   }
 
-  if (result.deleted.length === 0) {
+  for (const entry of result.danglingPorts) {
+    printWarning(`${prefix} dangling port: ${entry.portName} (port ${entry.port}) in ${entry.stateFile}`);
+  }
+
+  for (const entry of result.staleStateFiles) {
+    printWarning(`${prefix} stale state file: ${entry.file} (worktree ${entry.worktreeId} missing)`);
+  }
+
+  for (const entry of result.orphanedWorktrees) {
+    printWarning(`${prefix} orphaned worktree: ${entry.path}`);
+  }
+
+  for (const entry of result.orphanedNamespaces) {
+    printWarning(`${prefix} orphaned namespace: ${entry.namespace}`);
+  }
+
+  const total =
+    result.stoppedProcesses.length +
+    result.danglingPorts.length +
+    result.staleStateFiles.length +
+    result.orphanedWorktrees.length +
+    result.orphanedNamespaces.length;
+
+  if (total === 0) {
     printSuccess('No orphaned resources found');
   } else {
-    printSuccess(`Cleaned up ${result.deleted.length} orphaned namespace(s)`);
+    printSuccess(`${dryRun ? 'Would clean' : 'Cleaned'} ${total} orphaned resource(s)`);
   }
 }
 

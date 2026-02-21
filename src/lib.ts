@@ -42,7 +42,13 @@ export type {
   DestroyResult,
   DashboardData,
   WatchHandle,
+  PruneOptions,
   PruneResult,
+  StoppedProcessEntry,
+  DanglingPortEntry,
+  StaleStateFileEntry,
+  OrphanedWorktreeEntry,
+  OrphanedNamespaceEntry,
 } from './environment/types.js';
 
 // Workspace types

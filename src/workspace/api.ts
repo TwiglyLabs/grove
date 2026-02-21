@@ -14,6 +14,7 @@ import { closeWorkspace as internalClose } from './close.js';
 import {
   readWorkspaceState as internalReadState,
   findWorkspaceByBranch,
+  deleteWorkspaceState as internalDeleteState,
 } from './state.js';
 import type { WorkspaceState } from './types.js';
 import type { RepoId, WorkspaceId } from '../shared/identity.js';
@@ -156,6 +157,39 @@ export function resolvePath(workspace: WorkspaceId): string {
  */
 export function readState(workspace: WorkspaceId): WorkspaceState | null {
   return internalReadState(workspace) ?? findWorkspaceByBranch(workspace) ?? null;
+}
+
+/**
+ * Find orphaned worktrees — workspace states whose root directory no longer exists.
+ * Used by environment prune to clean up stale workspace state.
+ */
+export function findOrphanedWorktrees(): Array<{ path: string; workspaceId: string }> {
+  const states = internalList();
+  const orphaned: Array<{ path: string; workspaceId: string }> = [];
+
+  for (const ws of states) {
+    if (ws.missing) {
+      orphaned.push({
+        path: ws.root,
+        workspaceId: ws.id,
+      });
+    }
+  }
+
+  return orphaned;
+}
+
+/**
+ * Clean up orphaned workspace states by deleting their state files.
+ */
+export function cleanOrphanedWorktrees(entries: Array<{ workspaceId: string }>): void {
+  for (const entry of entries) {
+    try {
+      internalDeleteState(entry.workspaceId);
+    } catch {
+      // Best-effort cleanup
+    }
+  }
 }
 
 /** Resolve a WorkspaceId to a WorkspaceState, throwing if not found */

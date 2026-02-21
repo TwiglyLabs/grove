@@ -95,9 +95,43 @@ export interface WatchHandle {
   reload(service: string): void;
 }
 
+export interface PruneOptions {
+  dryRun?: boolean;
+}
+
+export interface StoppedProcessEntry {
+  stateFile: string;
+  processName: string;
+  pid: number;
+}
+
+export interface DanglingPortEntry {
+  stateFile: string;
+  portName: string;
+  port: number;
+}
+
+export interface StaleStateFileEntry {
+  file: string;
+  worktreeId: string;
+}
+
+export interface OrphanedWorktreeEntry {
+  path: string;
+  workspaceId: string;
+}
+
+export interface OrphanedNamespaceEntry {
+  namespace: string;
+}
+
 export interface PruneResult {
-  deleted: string[];
-  kept: string[];
+  stoppedProcesses: StoppedProcessEntry[];
+  danglingPorts: DanglingPortEntry[];
+  staleStateFiles: StaleStateFileEntry[];
+  orphanedWorktrees: OrphanedWorktreeEntry[];
+  orphanedNamespaces: OrphanedNamespaceEntry[];
+  dryRun: boolean;
 }
 
 // --- Event types (from src/api/events.ts) ---

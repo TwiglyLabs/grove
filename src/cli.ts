@@ -159,10 +159,11 @@ program
 program
   .command('prune')
   .description('Clean up orphaned resources')
-  .action(async () => {
+  .option('--dry-run', 'Preview what would be cleaned without making changes')
+  .action(async (options) => {
     try {
       const repoId = await resolveCurrentRepo();
-      await pruneCommand(repoId);
+      await pruneCommand(repoId, { dryRun: options.dryRun });
     } catch (error) {
       handleError(error);
     }

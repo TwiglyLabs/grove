@@ -13,6 +13,7 @@ const {
   mockInternalClose,
   mockInternalReadState,
   mockFindWorkspaceByBranch,
+  mockDeleteWorkspaceState,
   InternalConflictError,
 } = vi.hoisted(() => {
   class _InternalConflictError extends Error {
@@ -35,6 +36,7 @@ const {
     mockInternalClose: vi.fn(),
     mockInternalReadState: vi.fn(),
     mockFindWorkspaceByBranch: vi.fn(),
+    mockDeleteWorkspaceState: vi.fn(),
     InternalConflictError: _InternalConflictError,
   };
 });
@@ -64,9 +66,10 @@ vi.mock('./close.js', () => ({
 vi.mock('./state.js', () => ({
   readWorkspaceState: mockInternalReadState,
   findWorkspaceByBranch: mockFindWorkspaceByBranch,
+  deleteWorkspaceState: mockDeleteWorkspaceState,
 }));
 
-import { create, list, getStatus, sync, close, resolvePath, readState } from './api.js';
+import { create, list, getStatus, sync, close, resolvePath, readState, findOrphanedWorktrees, cleanOrphanedWorktrees } from './api.js';
 import { WorkspaceNotFoundError, ConflictError } from '../shared/errors.js';
 
 // --- Helpers ---
@@ -326,6 +329,78 @@ describe('workspace api', () => {
       mockFindWorkspaceByBranch.mockReturnValue(null);
 
       expect(readState(testWsId)).toBeNull();
+    });
+  });
+
+  describe('findOrphanedWorktrees', () => {
+    it('returns empty array when no workspaces exist', () => {
+      mockInternalList.mockReturnValue([]);
+
+      const result = findOrphanedWorktrees();
+
+      expect(result).toEqual([]);
+    });
+
+    it('returns empty array when all workspaces have existing roots', () => {
+      mockInternalList.mockReturnValue([
+        { id: 'ws-1', branch: 'feat-a', status: 'active', age: '2h', root: '/a', missing: false },
+        { id: 'ws-2', branch: 'feat-b', status: 'active', age: '1d', root: '/b', missing: false },
+      ]);
+
+      const result = findOrphanedWorktrees();
+
+      expect(result).toEqual([]);
+    });
+
+    it('detects workspaces whose root directory is missing', () => {
+      mockInternalList.mockReturnValue([
+        { id: 'ws-1', branch: 'feat-a', status: 'active', age: '2h', root: '/a', missing: false },
+        { id: 'ws-2', branch: 'feat-b', status: 'active', age: '1d', root: '/gone', missing: true },
+      ]);
+
+      const result = findOrphanedWorktrees();
+
+      expect(result).toEqual([{
+        path: '/gone',
+        workspaceId: 'ws-2',
+      }]);
+    });
+
+    it('detects multiple orphaned worktrees', () => {
+      mockInternalList.mockReturnValue([
+        { id: 'ws-1', branch: 'feat-a', status: 'active', age: '2h', root: '/gone-a', missing: true },
+        { id: 'ws-2', branch: 'feat-b', status: 'active', age: '1d', root: '/gone-b', missing: true },
+      ]);
+
+      const result = findOrphanedWorktrees();
+
+      expect(result).toHaveLength(2);
+    });
+  });
+
+  describe('cleanOrphanedWorktrees', () => {
+    it('deletes workspace state files for orphaned entries', () => {
+      const entries = [
+        { path: '/gone', workspaceId: 'ws-2' },
+      ];
+
+      cleanOrphanedWorktrees(entries);
+
+      expect(mockDeleteWorkspaceState).toHaveBeenCalledWith('ws-2');
+    });
+
+    it('continues when deletion fails', () => {
+      mockDeleteWorkspaceState.mockImplementation(() => {
+        throw new Error('Failed');
+      });
+
+      const entries = [
+        { path: '/gone-a', workspaceId: 'ws-1' },
+        { path: '/gone-b', workspaceId: 'ws-2' },
+      ];
+
+      expect(() => cleanOrphanedWorktrees(entries)).not.toThrow();
+      expect(mockDeleteWorkspaceState).toHaveBeenCalledTimes(2);
     });
   });
 });

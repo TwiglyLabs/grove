@@ -9,6 +9,7 @@ import { spawn } from 'child_process';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { load as loadConfig } from '../shared/config.js';
+import type { GroveConfig } from '../config.js';
 import type { RepoId } from '../shared/identity.js';
 import { EnvironmentNotRunningError } from '../shared/errors.js';
 import type {
@@ -19,6 +20,7 @@ import type {
   DestroyResult,
   DashboardData,
   WatchHandle,
+  PruneOptions,
   PruneResult,
 } from './types.js';
 
@@ -276,47 +278,93 @@ export async function reload(
 }
 
 /**
- * Clean up orphaned namespaces matching this repo's project prefix.
+ * Clean up orphaned resources: dead processes, dangling ports,
+ * stale state files, orphaned worktrees, orphaned namespaces.
+ *
+ * Order: processes → ports → state files → worktrees → namespaces
  */
-export async function prune(repo: RepoId): Promise<PruneResult> {
+export async function prune(repo: RepoId, options?: PruneOptions): Promise<PruneResult> {
   const config = await loadConfig(repo);
+  const dryRun = options?.dryRun ?? false;
 
-  const { execSync } = await import('child_process');
-  const { existsSync } = await import('fs');
+  const result: PruneResult = {
+    stoppedProcesses: [],
+    danglingPorts: [],
+    staleStateFiles: [],
+    orphanedWorktrees: [],
+    orphanedNamespaces: [],
+    dryRun,
+  };
 
-  const namespacePrefix = config.project.name;
+  // Step 1: Clean stopped processes
+  result.stoppedProcesses = await pruneStoppedProcesses(config, dryRun);
 
-  // Get all namespaces with our prefix
-  let namespaces: string[] = [];
-  try {
-    const output = execSync(
-      `kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'`,
-      { encoding: 'utf-8' },
-    );
-    namespaces = output.split(' ').filter(ns => ns.startsWith(namespacePrefix));
-  } catch {
-    return { deleted: [], kept: [] };
+  // Step 2: Clean dangling ports
+  result.danglingPorts = await pruneDanglingPorts(config, dryRun);
+
+  // Step 3: Clean stale state files
+  result.staleStateFiles = await pruneStaleStateFiles(config, dryRun);
+
+  // Step 4: Clean orphaned worktrees
+  result.orphanedWorktrees = await pruneOrphanedWorktrees(dryRun);
+
+  // Step 5: Clean orphaned namespaces
+  result.orphanedNamespaces = await pruneOrphanedNamespaces(config, dryRun);
+
+  return result;
+}
+
+// --- Prune sub-functions ---
+
+import * as pruneChecks from './prune-checks.js';
+import {
+  findOrphanedWorktrees as findOrphanedWs,
+  cleanOrphanedWorktrees as cleanOrphanedWs,
+} from '../workspace/api.js';
+import type {
+  StoppedProcessEntry,
+  DanglingPortEntry,
+  StaleStateFileEntry,
+  OrphanedWorktreeEntry,
+  OrphanedNamespaceEntry,
+} from './types.js';
+
+async function pruneStoppedProcesses(config: GroveConfig, dryRun: boolean): Promise<StoppedProcessEntry[]> {
+  const entries = pruneChecks.findStoppedProcesses(config);
+  if (!dryRun && entries.length > 0) {
+    await pruneChecks.cleanStoppedProcesses(config, entries);
   }
+  return entries;
+}
 
-  const stateDir = `${config.repoRoot}/.grove`;
-  const deleted: string[] = [];
-  const kept: string[] = [];
-
-  for (const ns of namespaces) {
-    const worktreeId = ns.substring(namespacePrefix.length + 1);
-    const stateFile = `${stateDir}/${worktreeId}.json`;
-
-    if (!existsSync(stateFile)) {
-      try {
-        execSync(`kubectl delete namespace ${ns}`, { stdio: 'pipe' });
-        deleted.push(ns);
-      } catch {
-        kept.push(ns);
-      }
-    } else {
-      kept.push(ns);
-    }
+async function pruneDanglingPorts(config: GroveConfig, dryRun: boolean): Promise<DanglingPortEntry[]> {
+  const entries = pruneChecks.findDanglingPorts(config);
+  if (!dryRun && entries.length > 0) {
+    await pruneChecks.cleanDanglingPorts(config, entries);
   }
+  return entries;
+}
 
-  return { deleted, kept };
+async function pruneStaleStateFiles(config: GroveConfig, dryRun: boolean): Promise<StaleStateFileEntry[]> {
+  const entries = pruneChecks.findStaleStateFiles(config);
+  if (!dryRun && entries.length > 0) {
+    pruneChecks.cleanStaleStateFiles(config, entries);
+  }
+  return entries;
+}
+
+async function pruneOrphanedWorktrees(dryRun: boolean): Promise<OrphanedWorktreeEntry[]> {
+  const entries = findOrphanedWs();
+  if (!dryRun && entries.length > 0) {
+    cleanOrphanedWs(entries);
+  }
+  return entries;
+}
+
+async function pruneOrphanedNamespaces(config: GroveConfig, dryRun: boolean): Promise<OrphanedNamespaceEntry[]> {
+  const entries = pruneChecks.findOrphanedNamespaces(config);
+  if (!dryRun && entries.length > 0) {
+    pruneChecks.cleanOrphanedNamespaces(entries);
+  }
+  return entries;
 }

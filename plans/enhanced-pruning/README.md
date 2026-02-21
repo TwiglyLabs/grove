@@ -1,6 +1,6 @@
 ---
 title: Enhanced Pruning
-status: not_started
+status: done
 description: >-
   Extend grove prune to clean orphaned worktrees, stale state files, dangling
   port allocations, and stopped processes
@@ -10,6 +10,7 @@ tags:
   - reliability
   - canopy
 not_started_at: '2026-02-21T02:02:30.133Z'
+completed_at: '2026-02-21T03:07:13.087Z'
 ---
 
 ## Problem
