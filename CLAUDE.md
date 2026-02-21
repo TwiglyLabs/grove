@@ -20,7 +20,6 @@ src/
   simulator/        iOS simulator management
   shell/            Shell into service pods
   logs/             Log streaming
-  request/          Cross-repo plan requests
   config.ts         Root config compositor — composes zod schemas from slices
   cli.ts            Commander CLI skeleton — imports from slice cli.ts files
   lib.ts            Public library API — re-exports from slices
