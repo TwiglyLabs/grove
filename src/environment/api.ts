@@ -11,7 +11,7 @@ import { join } from 'path';
 import { load as loadConfig } from '../shared/config.js';
 import type { GroveConfig } from '../config.js';
 import type { RepoId } from '../shared/identity.js';
-import { EnvironmentNotRunningError, NamespaceDeletionFailedError } from '../shared/errors.js';
+import { BuildFailedError, EnvironmentNotRunningError, GroveError, NamespaceDeletionFailedError } from '../shared/errors.js';
 import type {
   EnvironmentEvents,
   UpOptions,
@@ -327,12 +327,16 @@ export async function watch(
       if (!serviceConfig) {
         return;
       }
-      // Trigger a rebuild via the orchestrator
-      const provider = createClusterProvider(config.project.clusterType);
-      const orchestrator = new BuildOrchestrator(config, state, provider);
-      orchestrator.buildService(serviceConfig);
-      orchestrator.loadImage(serviceConfig);
-      orchestrator.helmUpgrade();
+      try {
+        const provider = createClusterProvider(config.project.clusterType);
+        const orchestrator = new BuildOrchestrator(config, state, provider);
+        orchestrator.buildService(serviceConfig);
+        orchestrator.loadImage(serviceConfig);
+        orchestrator.helmUpgrade();
+      } catch (err) {
+        const groveError = err instanceof GroveError ? err : new BuildFailedError(serviceConfig.name, err);
+        events?.onError?.(groveError);
+      }
     },
   };
 }

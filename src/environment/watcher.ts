@@ -1,6 +1,6 @@
 import { watch, type FSWatcher } from 'chokidar';
 import { join } from 'path';
-import { readFileSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, unlinkSync } from 'fs';
 import type { GroveConfig, Service } from '../config.js';
 import type { EnvironmentEvents, EnvironmentState } from './types.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
@@ -17,6 +17,9 @@ export interface WatcherOptions {
 export class FileWatcher {
   private watcher: FSWatcher | null = null;
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
+  private rebuilding: Set<string> = new Set();
+  private pendingRebuild: Set<string> = new Set();
+  private stopped = false;
   private maxRebuildAttempts: number;
   private baseRetryDelayMs: number;
 
@@ -40,6 +43,15 @@ export class FileWatcher {
           service,
           paths: service.build.watchPaths.map(p => join(this.config.repoRoot, p)),
         });
+      }
+    }
+
+    // Validate watch paths exist
+    for (const { service, paths } of watchPaths) {
+      for (const p of paths) {
+        if (!existsSync(p)) {
+          printError(`Watch path does not exist for ${service.name}: ${p}`);
+        }
       }
     }
 
@@ -96,14 +108,23 @@ export class FileWatcher {
 
   private scheduleRebuild(service: Service): void {
     const key = service.name;
-    const existingTimer = this.debounceTimers.get(key);
 
+    // If a rebuild is already in flight, mark as pending and skip
+    if (this.rebuilding.has(key)) {
+      this.pendingRebuild.add(key);
+      return;
+    }
+
+    const existingTimer = this.debounceTimers.get(key);
     if (existingTimer) {
       clearTimeout(existingTimer);
     }
 
     const timer = setTimeout(() => {
-      this.rebuild(service);
+      this.rebuild(service).catch(err => {
+        const groveError = err instanceof GroveError ? err : new BuildFailedError(service.name, err);
+        this.events?.onError?.(groveError);
+      });
       this.debounceTimers.delete(key);
     }, 500);
 
@@ -111,46 +132,61 @@ export class FileWatcher {
   }
 
   private async rebuild(service: Service): Promise<void> {
-    const maxAttempts = this.maxRebuildAttempts;
-    const baseDelayMs = this.baseRetryDelayMs;
+    const key = service.name;
+    this.rebuilding.add(key);
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      printInfo(`Rebuilding ${service.name}${attempt > 1 ? ` (attempt ${attempt}/${maxAttempts})` : ''}...`);
-      this.events?.onRebuild?.(service.name, 'start');
+    try {
+      const maxAttempts = this.maxRebuildAttempts;
+      const baseDelayMs = this.baseRetryDelayMs;
 
-      try {
-        const provider = createClusterProvider(this.config.project.clusterType);
-        const orchestrator = new BuildOrchestrator(this.config, this.state, provider);
-        orchestrator.buildService(service);
-        orchestrator.loadImage(service);
-        orchestrator.helmUpgrade();
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (this.stopped) return;
+        printInfo(`Rebuilding ${service.name}${attempt > 1 ? ` (attempt ${attempt}/${maxAttempts})` : ''}...`);
+        this.events?.onRebuild?.(service.name, 'start');
 
-        printSuccess(`${service.name} rebuilt and deployed`);
-        this.events?.onRebuild?.(service.name, 'complete');
+        try {
+          const provider = createClusterProvider(this.config.project.clusterType);
+          const orchestrator = new BuildOrchestrator(this.config, this.state, provider);
+          orchestrator.buildService(service);
+          orchestrator.loadImage(service);
+          orchestrator.helmUpgrade();
 
-        // Post-rebuild health check
-        await this.verifyServiceHealth(service);
-        return;
-      } catch (error) {
-        const groveError = error instanceof GroveError
-          ? error
-          : new BuildFailedError(service.name, error);
+          printSuccess(`${service.name} rebuilt and deployed`);
+          this.events?.onRebuild?.(service.name, 'complete');
 
-        if (attempt < maxAttempts) {
-          const delay = baseDelayMs * Math.pow(2, attempt - 1);
-          printError(`Rebuild failed for ${service.name}, retrying in ${delay / 1000}s...`);
-          this.events?.onRebuild?.(service.name, 'error', groveError.message);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          printError(`Rebuild failed for ${service.name} after ${maxAttempts} attempts`);
-          this.events?.onRebuild?.(service.name, 'error', groveError.message);
-          this.events?.onError?.(groveError);
+          // Post-rebuild health check
+          await this.verifyServiceHealth(service);
+          return;
+        } catch (error) {
+          const groveError = error instanceof GroveError
+            ? error
+            : new BuildFailedError(service.name, error);
+
+          if (attempt < maxAttempts) {
+            const delay = baseDelayMs * Math.pow(2, attempt - 1);
+            printError(`Rebuild failed for ${service.name}, retrying in ${delay / 1000}s...`);
+            this.events?.onRebuild?.(service.name, 'error', groveError.message);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            printError(`Rebuild failed for ${service.name} after ${maxAttempts} attempts`);
+            this.events?.onRebuild?.(service.name, 'error', groveError.message);
+            this.events?.onError?.(groveError);
+          }
         }
+      }
+    } finally {
+      this.rebuilding.delete(key);
+
+      // Re-trigger if a change came in during the rebuild
+      if (this.pendingRebuild.has(key)) {
+        this.pendingRebuild.delete(key);
+        this.scheduleRebuild(service);
       }
     }
   }
 
   private async verifyServiceHealth(service: Service): Promise<void> {
+    if (this.stopped) return;
     if (!service.health || !service.portForward) return;
 
     const port = this.state.ports[service.name];
@@ -179,12 +215,19 @@ export class FileWatcher {
         this.scheduleRebuild(service);
       }
       unlinkSync(path);
-    } catch {
-      // File might have been deleted already
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return; // File already deleted — expected race condition
+      }
+      this.events?.onError?.(
+        error instanceof GroveError ? error : new BuildFailedError('reload-request', error),
+      );
     }
   }
 
   stop(): void {
+    this.stopped = true;
+
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;

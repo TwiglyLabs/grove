@@ -1,6 +1,6 @@
 ---
 title: Watcher Reliability
-status: not_started
+status: in_progress
 description: >-
   Fix file watcher — dropped async errors, infinite rebuild loops, silent
   failures, debounce cleanup
@@ -10,6 +10,7 @@ tags:
   - 'epic:reliability-hardening'
 type: bugfix
 not_started_at: '2026-02-21T20:29:11.252Z'
+started_at: '2026-02-21T21:48:32.591Z'
 ---
 
 ## Problem
