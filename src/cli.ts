@@ -24,7 +24,7 @@ import {
 import { logsCommand } from './commands/logs.js';
 import { testCommand } from './commands/test.js';
 import { shellCommand } from './commands/shell.js';
-import { workspaceCommand } from './commands/workspace.js';
+import { workspaceCommand } from './workspace/cli.js';
 import { repoCommand } from './repo/cli.js';
 import { requestCommand } from './request/cli.js';
 

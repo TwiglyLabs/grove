@@ -1,8 +1,8 @@
-import { createWorkspace } from '../workspace/create.js';
-import { listWorkspaces, getWorkspaceStatus } from '../workspace/status.js';
-import { syncWorkspace, ConflictError } from '../workspace/sync.js';
-import { closeWorkspace } from '../workspace/close.js';
-import { readWorkspaceState, findWorkspaceByBranch } from '../workspace/state.js';
+import { createWorkspace } from './create.js';
+import { listWorkspaces, getWorkspaceStatus } from './status.js';
+import { syncWorkspace, ConflictError } from './sync.js';
+import { closeWorkspace } from './close.js';
+import { readWorkspaceState, findWorkspaceByBranch } from './state.js';
 import { printSuccess, printError, printInfo, printWarning, jsonSuccess, jsonError } from '../shared/output.js';
 
 interface WorkspaceContext {

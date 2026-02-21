@@ -33,7 +33,7 @@ vi.mock('child_process', () => ({
   execSync: mockExecSync,
 }));
 
-vi.mock('../config.js', () => ({
+vi.mock('./config.js', () => ({
   loadWorkspaceConfig: mockLoadWorkspaceConfig,
 }));
 

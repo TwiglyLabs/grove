@@ -102,15 +102,9 @@ export const UtilitiesSchema = z.object({
   reloadTargets: ReloadTargetsSchema,
 });
 
-// → workspace-slice
-export const WorkspaceRepoSchema = z.object({
-  path: z.string().min(1),
-  remote: z.string().optional(),
-});
-
-export const WorkspaceConfigSchema = z.object({
-  repos: z.array(WorkspaceRepoSchema).min(1),
-});
+// --- Workspace slice schemas (imported from owning slice) ---
+import { WorkspaceRepoSchema, WorkspaceConfigSchema } from './workspace/config.js';
+export { WorkspaceRepoSchema, WorkspaceConfigSchema };
 
 // --- Composed root schema ---
 // Assembles domain fragments into the full config shape.
@@ -133,8 +127,7 @@ export type Observability = z.infer<typeof ObservabilitySchema>;
 export type Testing = z.infer<typeof TestingSchema>;
 export type SimulatorConfig = z.infer<typeof SimulatorSchema>;
 export type ShellTarget = z.infer<typeof ShellTargetSchema>;
-export type WorkspaceRepo = z.infer<typeof WorkspaceRepoSchema>;
-export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
+export type { WorkspaceRepo, WorkspaceConfig } from './workspace/config.js';
 export type Utilities = z.infer<typeof UtilitiesSchema>;
 export type GroveConfig = z.infer<typeof GroveConfigSchema> & {
   portBlockSize: number;
@@ -175,25 +168,5 @@ export function loadConfig(rootDir?: string): GroveConfig {
   };
 }
 
-// Partial schema for workspace-only parsing (doesn't require project/helm/services)
-export const PartialGroveConfigSchema = z.object({
-  workspace: WorkspaceConfigSchema.optional(),
-}).passthrough();
-
-/**
- * Load workspace config from .grove.yaml. Returns null if file is missing
- * or has no workspace section. Does NOT throw for missing config.
- */
-export function loadWorkspaceConfig(repoRoot: string): WorkspaceConfig | null {
-  const configPath = join(repoRoot, '.grove.yaml');
-  if (!existsSync(configPath)) return null;
-
-  try {
-    const raw = parse(readFileSync(configPath, 'utf-8'));
-    const parsed = PartialGroveConfigSchema.safeParse(raw);
-    if (!parsed.success) return null;
-    return parsed.data.workspace ?? null;
-  } catch {
-    return null;
-  }
-}
+// Re-export workspace config loader from slice
+export { loadWorkspaceConfig } from './workspace/config.js';

@@ -1,22 +1,21 @@
 /**
- * Grove API: Workspace module
+ * Workspace slice — public API
  *
  * Manages multi-repo workspaces backed by git worktrees.
  * All operations accept WorkspaceId. The CLI resolves branch names
  * to WorkspaceIds before calling these functions.
  */
 
-import { existsSync } from 'fs';
-import { createWorkspace as internalCreate, type CreateResult as InternalCreateResult } from '../workspace/create.js';
-import { listWorkspaces as internalList } from '../workspace/status.js';
-import { getWorkspaceStatus as internalGetStatus } from '../workspace/status.js';
-import { syncWorkspace as internalSync, ConflictError as InternalConflictError } from '../workspace/sync.js';
-import { closeWorkspace as internalClose } from '../workspace/close.js';
+import { createWorkspace as internalCreate, type CreateResult as InternalCreateResult } from './create.js';
+import { listWorkspaces as internalList } from './status.js';
+import { getWorkspaceStatus as internalGetStatus } from './status.js';
+import { syncWorkspace as internalSync, ConflictError as InternalConflictError } from './sync.js';
+import { closeWorkspace as internalClose } from './close.js';
 import {
   readWorkspaceState as internalReadState,
   findWorkspaceByBranch,
-} from '../workspace/state.js';
-import type { WorkspaceState } from '../workspace/types.js';
+} from './state.js';
+import type { WorkspaceState } from './types.js';
 import type { RepoId, WorkspaceId } from '../shared/identity.js';
 import { asWorkspaceId } from '../shared/identity.js';
 import { resolveRepoPath } from '../repo/api.js';
@@ -33,8 +32,8 @@ import type {
   CloseOptions,
   CloseResult,
   DryRunResult,
+  WorkspaceEvents,
 } from './types.js';
-import type { WorkspaceEvents } from './events.js';
 
 /**
  * Create a workspace with git worktrees for the parent repo and any child repos.

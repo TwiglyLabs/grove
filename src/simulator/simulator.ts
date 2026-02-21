@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import type { SimulatorConfig } from '../config.js';
 import type { SimulatorState } from '../environment/types.js';
-import { sanitizeBranchName } from '../sanitize.js';
+import { sanitizeBranchName } from '../workspace/sanitize.js';
 
 interface SimctlDevice {
   udid: string;

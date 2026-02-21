@@ -1,6 +1,6 @@
 import { join, basename, resolve } from 'path';
 import { execSync } from 'child_process';
-import { loadWorkspaceConfig } from '../config.js';
+import { loadWorkspaceConfig } from './config.js';
 import { preflightCreate, validateRepoPaths } from './preflight.js';
 import { createWorktree, removeWorktree, deleteBranch, getWorktreeBasePath } from './git.js';
 import { writeWorkspaceState, readWorkspaceState, deleteWorkspaceState } from './state.js';

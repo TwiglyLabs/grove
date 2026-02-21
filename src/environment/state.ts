@@ -3,7 +3,7 @@ import { join } from 'path';
 import { execSync } from 'child_process';
 import * as lockfile from 'proper-lockfile';
 import type { GroveConfig } from '../config.js';
-import { sanitizeBranchName } from '../sanitize.js';
+import { sanitizeBranchName } from '../workspace/sanitize.js';
 import type { EnvironmentState, ProcessInfo } from './types.js';
 
 const STATE_DIR_NAME = '.grove';

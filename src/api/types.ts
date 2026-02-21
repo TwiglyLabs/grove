@@ -5,8 +5,6 @@
  * for API-specific concepts (results, options, handles).
  */
 
-import type { RepoId, WorkspaceId } from '../shared/identity.js';
-
 // Re-export identity types
 export type { RepoId, WorkspaceId } from '../shared/identity.js';
 
@@ -27,70 +25,21 @@ export type {
   PruneResult,
 } from '../environment/types.js';
 
-// --- Workspace types ---
+// --- Workspace types (re-exported from workspace slice) ---
 
-export interface CreateOptions {
-  from: RepoId;
-  signal?: AbortSignal;
-}
-
-export interface CreateResult {
-  id: WorkspaceId;
-  root: string;
-  branch: string;
-  repos: string[];
-}
-
-export interface ListOptions {
-  repo?: RepoId;
-}
-
-export interface WorkspaceListEntry {
-  id: WorkspaceId;
-  branch: string;
-  status: string;
-  age: string;
-  root: string;
-  missing: boolean;
-}
-
-export interface WorkspaceStatusResult {
-  id: WorkspaceId;
-  status: string;
-  branch: string;
-  repos: Array<{
-    name: string;
-    role: 'parent' | 'child';
-    dirty: number;
-    commits: number;
-    syncStatus: string | null;
-  }>;
-}
-
-export interface SyncOptions {
-  signal?: AbortSignal;
-}
-
-export interface SyncResult {
-  synced: string[];
-  details: Array<{ name: string; status: string }>;
-}
-
-export type CloseMode = 'merge' | 'discard';
-
-export interface CloseOptions {
-  dryRun?: boolean;
-  signal?: AbortSignal;
-}
-
-export interface DryRunResult {
-  repos: Array<{ name: string; commits: number }>;
-}
-
-export interface CloseResult {
-  branch: string;
-  mode: CloseMode;
-}
+export type {
+  CreateOptions,
+  CreateResult,
+  ListOptions,
+  WorkspaceListEntry,
+  WorkspaceStatusResult,
+  SyncOptions,
+  SyncResult,
+  CloseMode,
+  CloseOptions,
+  DryRunResult,
+  CloseResult,
+} from '../workspace/types.js';
 
 // --- Request types (re-exported from request slice) ---
 

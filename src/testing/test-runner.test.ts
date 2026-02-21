@@ -50,7 +50,7 @@ vi.mock('../environment/controller.js', () => ({
   ensureEnvironment: (...args: any[]) => mockEnsureEnvironment(...args),
 }));
 
-vi.mock('../sanitize.js', () => ({
+vi.mock('../workspace/sanitize.js', () => ({
   sanitizeBranchName: vi.fn((b: string) => b.replace(/\//g, '--').toLowerCase()),
 }));
 

@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { execSync } from 'child_process';
-import { sanitizeBranchName } from '../sanitize.js';
+import { sanitizeBranchName } from '../workspace/sanitize.js';
 
 const testDir = join(tmpdir(), `grove-env-api-test-${process.pid}`);
 

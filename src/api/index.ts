@@ -81,7 +81,7 @@ export type {
 // API modules (namespace imports)
 import * as repo from '../repo/api.js';
 import * as config from '../shared/config.js';
-import * as workspace from './workspace.js';
+import * as workspace from '../workspace/api.js';
 import * as request from '../request/api.js';
 import * as environment from '../environment/api.js';
 import * as testing from './testing.js';

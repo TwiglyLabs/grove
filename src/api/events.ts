@@ -11,13 +11,11 @@ import type { GroveError } from '../shared/errors.js';
 
 export type { EnvironmentPhase, EnvironmentEvents } from '../environment/types.js';
 
-// --- Non-environment events (remain here until satellite slices own them) ---
+// --- Workspace events (re-exported from workspace slice) ---
 
-export interface WorkspaceEvents {
-  onProgress?(step: string, repo?: string, detail?: string): void;
-  onConflict?(repo: string, files: string[]): void;
-  onError?(error: GroveError): void;
-}
+export type { WorkspaceEvents } from '../workspace/types.js';
+
+// --- Non-environment events (remain here until satellite slices own them) ---
 
 export interface TestEvents {
   onProgress?(phase: string, detail?: string): void;

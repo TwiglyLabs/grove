@@ -5,7 +5,7 @@ import type { GroveConfig } from '../config.js';
 import type { EnvironmentState } from '../environment/types.js';
 import { readState } from '../environment/state.js';
 import { ensureEnvironment } from '../environment/controller.js';
-import { sanitizeBranchName } from '../sanitize.js';
+import { sanitizeBranchName } from '../workspace/sanitize.js';
 import { resolveTemplates } from '../environment/template.js';
 import { parseJunitXml, parsePlaywrightJson, parseVitestJson } from './result-parsers.js';
 import { archiveResults } from './result-archive.js';

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { workspaceCommand } from './workspace.js';
-import { ConflictError } from '../workspace/sync.js';
+import { workspaceCommand } from './cli.js';
+import { ConflictError } from './sync.js';
 
 // Mock workspace modules
 const mockCreateWorkspace = vi.hoisted(() => vi.fn());
@@ -19,28 +19,28 @@ const mockPrintWarning = vi.hoisted(() => vi.fn());
 const mockJsonSuccess = vi.hoisted(() => vi.fn());
 const mockJsonError = vi.hoisted(() => vi.fn());
 
-vi.mock('../workspace/create.js', () => ({
+vi.mock('./create.js', () => ({
   createWorkspace: mockCreateWorkspace,
 }));
 
-vi.mock('../workspace/status.js', () => ({
+vi.mock('./status.js', () => ({
   listWorkspaces: mockListWorkspaces,
   getWorkspaceStatus: mockGetWorkspaceStatus,
 }));
 
-vi.mock('../workspace/sync.js', async (importOriginal) => {
-  const orig = await importOriginal<typeof import('../workspace/sync.js')>();
+vi.mock('./sync.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('./sync.js')>();
   return {
     syncWorkspace: mockSyncWorkspace,
     ConflictError: orig.ConflictError,
   };
 });
 
-vi.mock('../workspace/close.js', () => ({
+vi.mock('./close.js', () => ({
   closeWorkspace: mockCloseWorkspace,
 }));
 
-vi.mock('../workspace/state.js', () => ({
+vi.mock('./state.js', () => ({
   readWorkspaceState: mockReadWorkspaceState,
   findWorkspaceByBranch: mockFindWorkspaceByBranch,
 }));
