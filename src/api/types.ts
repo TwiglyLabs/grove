@@ -92,21 +92,9 @@ export interface CloseResult {
   mode: CloseMode;
 }
 
-// --- Request types ---
+// --- Request types (re-exported from request slice) ---
 
-export interface RequestOptions {
-  body: string;
-  description?: string;
-  sourceRepo?: RepoId;
-}
-
-export interface RequestResult {
-  file: string;
-  worktree: string;
-  branch: string;
-  source: string | null;
-  target: string;
-}
+export type { RequestOptions, RequestResult } from '../request/types.js';
 
 // --- Testing types ---
 

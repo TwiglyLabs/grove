@@ -18,7 +18,7 @@ vi.mock('os', async () => {
   };
 });
 
-const { requestCommand } = await import('./request.js');
+const { requestCommand } = await import('./cli.js');
 
 function createGitRepo(name: string): string {
   const repoPath = join(testDir, name);

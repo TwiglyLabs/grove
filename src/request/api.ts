@@ -1,12 +1,12 @@
 /**
- * Grove API: Request module
+ * Request slice — public API
  *
- * Cross-repo plan requests. Extracts core logic from commands/request.ts
- * and accepts RepoId instead of repo name strings.
+ * Cross-repo plan requests. Creates a worktree in the target repo
+ * with a plan file and initial commit.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { join, resolve, dirname } from 'path';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import { execSync } from 'child_process';
 import { readRegistry } from '../repo/state.js';
 import {
@@ -20,46 +20,9 @@ import type { WorkspaceState } from '../workspace/types.js';
 import type { RepoId } from '../shared/identity.js';
 import { RepoNotFoundError, BranchExistsError } from '../shared/errors.js';
 import type { RequestOptions, RequestResult } from './types.js';
+import { toTitle, parseTrellisConfig, detectSourceRepoName } from './trellis.js';
 
 const KEBAB_CASE_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-
-function toTitle(planName: string): string {
-  return planName
-    .split('-')
-    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(' ');
-}
-
-function parseTrellisConfig(repoPath: string): string {
-  try {
-    const content = readFileSync(join(repoPath, '.trellis'), 'utf-8');
-    for (const line of content.split('\n')) {
-      const colonIdx = line.indexOf(':');
-      if (colonIdx === -1) continue;
-      const key = line.slice(0, colonIdx).trim();
-      const value = line.slice(colonIdx + 1).trim();
-      if (key === 'plans_dir' && value) return value;
-    }
-  } catch {
-    // Missing, unreadable, or malformed — fall back to default
-  }
-  return 'plans';
-}
-
-function detectSourceRepoName(registry: { repos: Array<{ name: string; path: string }> }): string | null {
-  try {
-    const gitCommonDir = execSync('git rev-parse --git-common-dir', {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-
-    const repoRoot = dirname(resolve(gitCommonDir));
-    const match = registry.repos.find(r => resolve(r.path) === repoRoot);
-    return match ? match.name : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Create a cross-repo plan request.
