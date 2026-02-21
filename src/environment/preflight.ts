@@ -52,11 +52,30 @@ export async function runPreflightChecks(config: GroveConfig): Promise<Preflight
     checks.push(checkCommand('k3d version', 'k3d'));
   }
 
-  // Check port availability if state file exists
+  // Check port availability if state file exists.
+  // Skip ports where our own port-forward processes are still running — those ports
+  // are expected to be bound. Only flag ports that are occupied by something else.
   const state = readState(config);
   if (state !== null) {
+    const ownPorts = new Set<number>();
+    for (const [processName, processInfo] of Object.entries(state.processes)) {
+      if (processName.startsWith('port-forward-')) {
+        try {
+          process.kill(processInfo.pid, 0); // check if alive (signal 0)
+          const serviceName = processName.replace('port-forward-', '');
+          if (state.ports[serviceName] !== undefined) {
+            ownPorts.add(state.ports[serviceName]);
+          }
+        } catch {
+          // Process is dead — port may be available or stolen
+        }
+      }
+    }
+
     const portChecks = await Promise.all(
-      Object.entries(state.ports).map(([name, port]) => checkPort(port, name)),
+      Object.entries(state.ports)
+        .filter(([_name, port]) => !ownPorts.has(port))
+        .map(([name, port]) => checkPort(port, name)),
     );
     checks.push(...portChecks);
   }

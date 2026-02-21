@@ -71,6 +71,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && req.url === '/login') {
+    // Proxy login to auth service
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    await new Promise((resolve) => req.on('end', resolve));
+    try {
+      const authResp = await httpRequest(`${AUTH_URL}/login`, 'POST', body);
+      res.writeHead(authResp.statusCode);
+      res.end(authResp.body);
+    } catch (_) {
+      res.writeHead(502);
+      res.end(JSON.stringify({ error: 'auth service unreachable' }));
+    }
+    return;
+  }
+
   if (req.method === 'GET' && req.url === '/data') {
     const ok = await authMiddleware(req, res);
     if (!ok) return;

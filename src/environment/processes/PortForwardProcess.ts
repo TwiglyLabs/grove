@@ -48,8 +48,8 @@ export class PortForwardProcess {
 
     child.unref();
 
-    // Verify port is actually bound
-    const bound = await checkTcpReady(hostIp, localPort, 5000, 200);
+    // Verify port is actually bound (15s timeout to accommodate VM-based runtimes like Colima)
+    const bound = await checkTcpReady(hostIp, localPort, 15000, 300);
     if (!bound) {
       try { process.kill(child.pid!, 'SIGTERM'); } catch {}
       throw new PortForwardFailedError(serviceName, localPort);

@@ -52,7 +52,7 @@ services:
 
 frontends:
   - name: webapp
-    command: npx vite
+    command: npx vite --config vite.app.config.js
     cwd: test/smoke/fixtures/frontend
     env:
       GROVE_API_URL: "http://127.0.0.1:{{ports.smoke-api}}"

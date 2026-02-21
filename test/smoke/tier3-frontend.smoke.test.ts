@@ -51,8 +51,10 @@ describe.skipIf(!prerequisitesMet).sequential('Tier 3: Frontend Integration', ()
       execSync('npm install', { cwd: FRONTEND_DIR, stdio: 'inherit', timeout: 60_000 });
     }
 
-    // Start Vite dev server
-    frontendProcess = spawn('npx', ['vite', '--port', String(FRONTEND_PORT), '--strictPort'], {
+    // Start Vite dev server via node_modules/.bin directly (avoids npx PATH issues in spawn)
+    const viteBin = join(FRONTEND_DIR, 'node_modules', '.bin', 'vite');
+    const viteConfig = join(FRONTEND_DIR, 'vite.app.config.js');
+    frontendProcess = spawn(viteBin, ['--config', viteConfig, '--port', String(FRONTEND_PORT), '--strictPort', '--host', '127.0.0.1'], {
       cwd: FRONTEND_DIR,
       stdio: 'pipe',
       env: {
@@ -60,6 +62,11 @@ describe.skipIf(!prerequisitesMet).sequential('Tier 3: Frontend Integration', ()
         PORT: String(FRONTEND_PORT),
         GROVE_API_URL: `http://127.0.0.1:${API_PORT}`,
       },
+    });
+
+    // Capture stderr for debugging
+    frontendProcess.stderr?.on('data', (data: Buffer) => {
+      console.error(`[vite stderr] ${data.toString().trim()}`);
     });
 
     // Wait for frontend to be ready
