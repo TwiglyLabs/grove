@@ -1,12 +1,14 @@
 ---
 title: 'Multi-Repo Worktree: API-Driven Repos Parameter'
-status: not_started
+status: done
 description: >-
   Add optional repos parameter to workspace.create() so callers can specify
   which repos to span without relying on .grove.yaml config.
 tags:
   - workspace
 type: feature
+started_at: '2026-02-21T15:48:03.212Z'
+completed_at: '2026-02-21T16:09:19.634Z'
 ---
 
 ## Problem

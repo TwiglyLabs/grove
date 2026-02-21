@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { tmpdir, homedir } from 'os';
 import { createWorkspace } from '../../src/workspace/create.js';
@@ -8,15 +8,23 @@ import { listWorkspaces, getWorkspaceStatus } from '../../src/workspace/status.j
 import { syncWorkspace, ConflictError } from '../../src/workspace/sync.js';
 import { closeWorkspace } from '../../src/workspace/close.js';
 import { deleteWorkspaceState, readWorkspaceState, writeWorkspaceState, findWorkspaceByBranch } from '../../src/workspace/state.js';
+import { create as apiCreate } from '../../src/workspace/api.js';
+import { add as addRepo } from '../../src/repo/api.js';
+import type { RepoId } from '../../src/shared/identity.js';
 
 // E2E tests use real git repos in a temp directory.
 // GROVE_WORKTREE_DIR isolates worktrees from the user's home.
 // GROVE_STATE_DIR isolates state files from the user's home.
+// GROVE_REGISTRY_DIR isolates repo registry from the user's home.
 
 const TEST_PREFIX = `grove-e2e-${process.pid}`;
-const TEMP_ROOT = join(tmpdir(), TEST_PREFIX);
+// Resolve symlinks (macOS /var -> /private/var) so paths match git's show-toplevel
+const rawTempRoot = join(tmpdir(), TEST_PREFIX);
+mkdirSync(rawTempRoot, { recursive: true });
+const TEMP_ROOT = realpathSync(rawTempRoot);
 const WORKTREE_DIR = join(TEMP_ROOT, 'worktrees');
 const STATE_DIR = join(TEMP_ROOT, 'state');
+const REGISTRY_DIR = join(TEMP_ROOT, 'registry');
 
 // Track workspace IDs for cleanup
 const createdWorkspaceIds: string[] = [];
@@ -93,6 +101,24 @@ function createGroupedRepos(parentName: string, childNames: string[]): {
   return { parent, children };
 }
 
+/**
+ * Create independent sibling repos (not nested inside each other).
+ * Used for testing API-sourced childRepos where repos live at arbitrary paths.
+ */
+function createSiblingRepos(parentName: string, childNames: string[]): {
+  parent: string;
+  children: Record<string, string>;
+} {
+  const parent = createTempRepo(parentName);
+  const children: Record<string, string> = {};
+
+  for (const childName of childNames) {
+    children[childName] = createTempRepo(`${parentName}-${childName}`);
+  }
+
+  return { parent, children };
+}
+
 function uniqueBranch(label: string): string {
   return `${TEST_PREFIX}-${label}-${Date.now()}`;
 }
@@ -101,8 +127,10 @@ beforeAll(() => {
   mkdirSync(TEMP_ROOT, { recursive: true });
   mkdirSync(WORKTREE_DIR, { recursive: true });
   mkdirSync(STATE_DIR, { recursive: true });
+  mkdirSync(REGISTRY_DIR, { recursive: true });
   process.env.GROVE_WORKTREE_DIR = WORKTREE_DIR;
   process.env.GROVE_STATE_DIR = STATE_DIR;
+  process.env.GROVE_REGISTRY_DIR = REGISTRY_DIR;
 });
 
 afterEach(() => {
@@ -120,6 +148,7 @@ afterEach(() => {
 afterAll(() => {
   delete process.env.GROVE_WORKTREE_DIR;
   delete process.env.GROVE_STATE_DIR;
+  delete process.env.GROVE_REGISTRY_DIR;
   // Clean up temp directory
   try {
     rmSync(TEMP_ROOT, { recursive: true, force: true });
@@ -664,5 +693,270 @@ describe('workspace e2e: close-merge-recovery', () => {
     // Verify cleanup
     expect(existsSync(result.root)).toBe(false);
     expect(readWorkspaceState(result.id)).toBeNull();
+  });
+});
+
+describe('workspace e2e: API-sourced repos (childRepos)', () => {
+  it('create with childRepos → worktrees for parent + children at independent paths', async () => {
+    const { parent, children } = createSiblingRepos('api-proj', ['api-svc', 'web-app']);
+    const branch = uniqueBranch('api-child');
+
+    const result = await createWorkspace(branch, {
+      from: parent,
+      childRepos: [
+        { path: children['api-svc'], name: 'api-svc' },
+        { path: children['web-app'], name: 'web-app' },
+      ],
+    });
+    createdWorkspaceIds.push(result.id);
+
+    expect(result.repos).toEqual(['api-proj', 'api-svc', 'web-app']);
+
+    // Verify parent worktree
+    expect(existsSync(result.root)).toBe(true);
+    expect(git('branch --show-current', result.root)).toBe(branch);
+
+    // Verify child worktrees are nested inside parent worktree root
+    const apiWorktree = join(result.root, 'api-svc');
+    const webWorktree = join(result.root, 'web-app');
+    expect(existsSync(apiWorktree)).toBe(true);
+    expect(existsSync(webWorktree)).toBe(true);
+    expect(git('branch --show-current', apiWorktree)).toBe(branch);
+    expect(git('branch --show-current', webWorktree)).toBe(branch);
+
+    // State has all 3 repos with correct roles
+    const state = readWorkspaceState(result.id);
+    expect(state).not.toBeNull();
+    expect(state!.repos).toHaveLength(3);
+    expect(state!.repos[0]).toMatchObject({ name: 'api-proj', role: 'parent' });
+    expect(state!.repos[1]).toMatchObject({ name: 'api-svc', role: 'child' });
+    expect(state!.repos[2]).toMatchObject({ name: 'web-app', role: 'child' });
+
+    // Status shows all repos
+    const status = getWorkspaceStatus(branch);
+    expect(status.repos).toHaveLength(3);
+
+    // Discard cleans up all worktrees
+    await closeWorkspace(branch, 'discard');
+    expect(existsSync(result.root)).toBe(false);
+    expect(existsSync(apiWorktree)).toBe(false);
+    expect(existsSync(webWorktree)).toBe(false);
+  });
+
+  it('childRepos overrides config repos', async () => {
+    // Create a grouped repo with config repos
+    const { parent } = createGroupedRepos('override-proj', ['config-child']);
+    // Create a separate repo to use as API-sourced child
+    const apiChild = createTempRepo('override-proj-api-child');
+
+    const branch = uniqueBranch('override');
+
+    // Pass childRepos — should use API child, not config child
+    const result = await createWorkspace(branch, {
+      from: parent,
+      childRepos: [
+        { path: apiChild, name: 'api-child' },
+      ],
+    });
+    createdWorkspaceIds.push(result.id);
+
+    // Should have parent + api-child, NOT config-child
+    expect(result.repos).toEqual(['override-proj', 'api-child']);
+    expect(result.repos).not.toContain('config-child');
+
+    // Verify the API child worktree exists
+    const apiChildWorktree = join(result.root, 'api-child');
+    expect(existsSync(apiChildWorktree)).toBe(true);
+    expect(git('branch --show-current', apiChildWorktree)).toBe(branch);
+
+    // Config child worktree should NOT exist
+    expect(existsSync(join(result.root, 'config-child'))).toBe(false);
+
+    await closeWorkspace(branch, 'discard');
+  });
+
+  it('childRepos: commit in child → close --merge → changes land in source', async () => {
+    const { parent, children } = createSiblingRepos('merge-api-proj', ['service']);
+    const branch = uniqueBranch('merge-api');
+
+    const result = await createWorkspace(branch, {
+      from: parent,
+      childRepos: [{ path: children['service'], name: 'service' }],
+    });
+    createdWorkspaceIds.push(result.id);
+
+    const serviceWorktree = join(result.root, 'service');
+
+    // Gitignore the child worktree directory in the parent
+    // (same as grouped repos do — child dirs are nested inside parent worktree)
+    writeFileSync(join(result.root, '.gitignore'), 'service/\n');
+    git('add .gitignore', result.root);
+    git('commit -m "Gitignore child worktrees"', result.root);
+
+    // Make changes in both parent and child worktrees
+    writeFileSync(join(result.root, 'parent-work.txt'), 'parent feature');
+    git('add .', result.root);
+    git('commit -m "Parent feature"', result.root);
+
+    writeFileSync(join(serviceWorktree, 'service-work.txt'), 'service feature');
+    git('add .', serviceWorktree);
+    git('commit -m "Service feature"', serviceWorktree);
+
+    // Sync then merge
+    await syncWorkspace(branch);
+    await closeWorkspace(branch, 'merge');
+
+    // Verify changes landed in source repos
+    const parentLog = git('log --oneline -1', parent);
+    expect(parentLog).toContain('Parent feature');
+
+    const childLog = git('log --oneline -1', children['service']);
+    expect(childLog).toContain('Service feature');
+
+    // Verify cleanup
+    expect(existsSync(result.root)).toBe(false);
+  });
+
+  it('childRepos: empty array → single-repo workspace (no config repos)', async () => {
+    // Create a grouped repo with config repos
+    const { parent } = createGroupedRepos('empty-api-proj', ['config-only']);
+    const branch = uniqueBranch('empty-api');
+
+    // Pass empty childRepos — should override config and create single-repo workspace
+    const result = await createWorkspace(branch, {
+      from: parent,
+      childRepos: [],
+    });
+    createdWorkspaceIds.push(result.id);
+
+    // Should only have the parent repo
+    expect(result.repos).toEqual(['empty-api-proj']);
+
+    // Config child worktree should NOT exist
+    expect(existsSync(join(result.root, 'config-only'))).toBe(false);
+
+    await closeWorkspace(branch, 'discard');
+  });
+
+  it('childRepos: rollback on failure cleans up all repos', async () => {
+    const { parent, children } = createSiblingRepos('rollback-api-proj', ['good', 'bad']);
+    const branch = uniqueBranch('rollback-api');
+
+    // Pre-create the branch in the "bad" child to cause preflight failure
+    git(`branch ${branch}`, children['bad']);
+
+    await expect(createWorkspace(branch, {
+      from: parent,
+      childRepos: [
+        { path: children['good'], name: 'good' },
+        { path: children['bad'], name: 'bad' },
+      ],
+    })).rejects.toThrow('already exists');
+
+    // No worktrees should exist
+    const expectedRoot = join(WORKTREE_DIR, 'rollback-api-proj', branch);
+    expect(existsSync(expectedRoot)).toBe(false);
+  });
+});
+
+describe('workspace e2e: public API with RepoRef', () => {
+  it('create with RepoId refs → resolves via registry and creates worktrees', async () => {
+    const { parent, children } = createSiblingRepos('pubapi-proj', ['backend', 'frontend']);
+    const branch = uniqueBranch('pubapi');
+
+    // Register all repos in the grove registry
+    const parentEntry = await addRepo(parent);
+    const backendEntry = await addRepo(children['backend']);
+    const frontendEntry = await addRepo(children['frontend']);
+
+    const result = await apiCreate(branch, {
+      from: parentEntry.id,
+      repos: [backendEntry.id, frontendEntry.id],
+    });
+    createdWorkspaceIds.push(result.id);
+
+    // Verify worktrees created for all repos
+    expect(result.repos).toHaveLength(3);
+    expect(existsSync(result.root)).toBe(true);
+    expect(git('branch --show-current', result.root)).toBe(branch);
+
+    // Children are named after their registry entry names
+    const backendWorktree = join(result.root, backendEntry.name);
+    const frontendWorktree = join(result.root, frontendEntry.name);
+    expect(existsSync(backendWorktree)).toBe(true);
+    expect(existsSync(frontendWorktree)).toBe(true);
+    expect(git('branch --show-current', backendWorktree)).toBe(branch);
+    expect(git('branch --show-current', frontendWorktree)).toBe(branch);
+
+    // Close and verify cleanup
+    await closeWorkspace(branch, 'discard');
+    expect(existsSync(result.root)).toBe(false);
+  });
+
+  it('create with RepoSpec inline paths → creates worktrees without registry', async () => {
+    const { parent, children } = createSiblingRepos('spec-proj', ['lib']);
+    const branch = uniqueBranch('spec');
+
+    // Register only the parent (children use inline specs)
+    const parentEntry = await addRepo(parent);
+
+    const result = await apiCreate(branch, {
+      from: parentEntry.id,
+      repos: [{ path: children['lib'], name: 'my-lib' }],
+    });
+    createdWorkspaceIds.push(result.id);
+
+    expect(result.repos).toContain('my-lib');
+
+    const libWorktree = join(result.root, 'my-lib');
+    expect(existsSync(libWorktree)).toBe(true);
+    expect(git('branch --show-current', libWorktree)).toBe(branch);
+
+    await closeWorkspace(branch, 'discard');
+  });
+
+  it('create with repos: [] → overrides config, single-repo workspace', async () => {
+    const { parent } = createGroupedRepos('emptyref-proj', ['should-be-ignored']);
+    const branch = uniqueBranch('emptyref');
+
+    const parentEntry = await addRepo(parent);
+
+    const result = await apiCreate(branch, {
+      from: parentEntry.id,
+      repos: [],
+    });
+    createdWorkspaceIds.push(result.id);
+
+    // Only parent repo, config child was overridden
+    expect(result.repos).toEqual(['emptyref-proj']);
+    expect(existsSync(join(result.root, 'should-be-ignored'))).toBe(false);
+
+    await closeWorkspace(branch, 'discard');
+  });
+
+  it('create with mixed RepoId and RepoSpec → both resolved correctly', async () => {
+    const { parent, children } = createSiblingRepos('mixed-proj', ['registered', 'inline']);
+    const branch = uniqueBranch('mixed');
+
+    const parentEntry = await addRepo(parent);
+    const registeredEntry = await addRepo(children['registered']);
+
+    const result = await apiCreate(branch, {
+      from: parentEntry.id,
+      repos: [
+        registeredEntry.id,
+        { path: children['inline'], name: 'inline-repo' },
+      ],
+    });
+    createdWorkspaceIds.push(result.id);
+
+    expect(result.repos).toHaveLength(3);
+
+    const registeredWorktree = join(result.root, registeredEntry.name);
+    const inlineWorktree = join(result.root, 'inline-repo');
+    expect(existsSync(registeredWorktree)).toBe(true);
+    expect(existsSync(inlineWorktree)).toBe(true);
+
+    await closeWorkspace(branch, 'discard');
   });
 });

@@ -56,6 +56,8 @@ export type {
   WorkspaceStatus,
   SyncStatus,
   SetupResult,
+  RepoSpec,
+  RepoRef,
   CreateOptions,
   CreateResult,
   ListOptions,

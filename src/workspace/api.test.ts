@@ -6,6 +6,7 @@ import type { RepoId, WorkspaceId } from '../shared/identity.js';
 
 const {
   mockResolveRepoPath,
+  mockGetRepo,
   mockInternalCreate,
   mockInternalList,
   mockInternalGetStatus,
@@ -17,6 +18,7 @@ const {
   mockLoadConfig,
   mockReadEnvState,
   mockSanitizeBranchName,
+  mockRealpathSync,
   InternalConflictError,
 } = vi.hoisted(() => {
   class _InternalConflictError extends Error {
@@ -32,6 +34,7 @@ const {
   }
   return {
     mockResolveRepoPath: vi.fn(),
+    mockGetRepo: vi.fn(),
     mockInternalCreate: vi.fn(),
     mockInternalList: vi.fn(),
     mockInternalGetStatus: vi.fn(),
@@ -43,12 +46,22 @@ const {
     mockLoadConfig: vi.fn(),
     mockReadEnvState: vi.fn(),
     mockSanitizeBranchName: vi.fn(),
+    mockRealpathSync: vi.fn((p: string) => p),
     InternalConflictError: _InternalConflictError,
+  };
+});
+
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    realpathSync: mockRealpathSync,
   };
 });
 
 vi.mock('../repo/api.js', () => ({
   resolveRepoPath: mockResolveRepoPath,
+  get: mockGetRepo,
 }));
 
 vi.mock('./create.js', () => ({
@@ -182,6 +195,220 @@ describe('workspace api', () => {
 
       await expect(create('feature-x', { from: 'repo_bad' as RepoId }))
         .rejects.toThrow('Repo not found');
+    });
+
+    it('repos with RepoId entries → resolved via registry and passed as childRepos', async () => {
+      mockResolveRepoPath
+        .mockResolvedValueOnce('/repos/project')  // from
+        .mockResolvedValueOnce('/repos/api');      // RepoId resolution
+      mockGetRepo.mockResolvedValue({
+        id: 'repo_api123' as RepoId,
+        name: 'api',
+        path: '/repos/api',
+        addedAt: '2026-01-01',
+      });
+      mockRealpathSync.mockImplementation((p: string) => p);
+      mockInternalCreate.mockResolvedValue({
+        id: 'project-feature-x',
+        root: '/home/user/worktrees/project/feature-x',
+        branch: 'feature-x',
+        repos: ['project', 'api'],
+      });
+
+      await create('feature-x', {
+        from: testRepoId,
+        repos: ['repo_api123' as RepoId],
+      });
+
+      expect(mockInternalCreate).toHaveBeenCalledWith('feature-x', {
+        from: '/repos/project',
+        childRepos: [{ path: '/repos/api', name: 'api' }],
+      });
+    });
+
+    it('repos with RepoSpec absolute path → used as-is', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockRealpathSync.mockImplementation((p: string) => p);
+      mockInternalCreate.mockResolvedValue({
+        id: 'project-feature-x',
+        root: '/home/user/worktrees/project/feature-x',
+        branch: 'feature-x',
+        repos: ['project', 'external'],
+      });
+
+      await create('feature-x', {
+        from: testRepoId,
+        repos: [{ path: '/other/external' }],
+      });
+
+      expect(mockInternalCreate).toHaveBeenCalledWith('feature-x', {
+        from: '/repos/project',
+        childRepos: [{ path: '/other/external', name: 'external' }],
+      });
+    });
+
+    it('repos with RepoSpec relative path → resolved against parent root', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockRealpathSync.mockImplementation((p: string) => p);
+      mockInternalCreate.mockResolvedValue({
+        id: 'project-feature-x',
+        root: '/home/user/worktrees/project/feature-x',
+        branch: 'feature-x',
+        repos: ['project', 'libs/shared'],
+      });
+
+      await create('feature-x', {
+        from: testRepoId,
+        repos: [{ path: 'libs/shared' }],
+      });
+
+      expect(mockInternalCreate).toHaveBeenCalledWith('feature-x', {
+        from: '/repos/project',
+        childRepos: [{ path: '/repos/project/libs/shared', name: 'libs/shared' }],
+      });
+    });
+
+    it('repos with explicit name → name used for worktree directory', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockRealpathSync.mockImplementation((p: string) => p);
+      mockInternalCreate.mockResolvedValue({
+        id: 'project-feature-x',
+        root: '/home/user/worktrees/project/feature-x',
+        branch: 'feature-x',
+        repos: ['project', 'my-api'],
+      });
+
+      await create('feature-x', {
+        from: testRepoId,
+        repos: [{ path: '/repos/api-service', name: 'my-api' }],
+      });
+
+      expect(mockInternalCreate).toHaveBeenCalledWith('feature-x', {
+        from: '/repos/project',
+        childRepos: [{ path: '/repos/api-service', name: 'my-api' }],
+      });
+    });
+
+    it('repos containing parent repo → silently deduplicated', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockRealpathSync.mockImplementation((p: string) => p);
+      mockInternalCreate.mockResolvedValue({
+        id: 'project-feature-x',
+        root: '/home/user/worktrees/project/feature-x',
+        branch: 'feature-x',
+        repos: ['project', 'api'],
+      });
+
+      await create('feature-x', {
+        from: testRepoId,
+        repos: [
+          { path: '/repos/project' },  // same as parent — should be skipped
+          { path: '/repos/api' },
+        ],
+      });
+
+      expect(mockInternalCreate).toHaveBeenCalledWith('feature-x', {
+        from: '/repos/project',
+        childRepos: [{ path: '/repos/api', name: 'api' }],
+      });
+    });
+
+    it('repos with duplicate paths → throws', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockRealpathSync.mockImplementation((p: string) => p);
+
+      await expect(create('feature-x', {
+        from: testRepoId,
+        repos: [
+          { path: '/repos/api' },
+          { path: '/repos/api' },
+        ],
+      })).rejects.toThrow('Duplicate repo path');
+    });
+
+    it('repos with duplicate names → throws with disambiguation hint', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockRealpathSync.mockImplementation((p: string) => p);
+
+      await expect(create('feature-x', {
+        from: testRepoId,
+        repos: [
+          { path: '/repos/org-a/shared' },
+          { path: '/repos/org-b/shared' },
+        ],
+      })).rejects.toThrow(/Duplicate repo name.*name.*disambiguate/);
+    });
+
+    it('repos with non-existent RepoId → throws RepoNotFoundError', async () => {
+      mockResolveRepoPath
+        .mockResolvedValueOnce('/repos/project')  // from
+        .mockRejectedValueOnce(new Error('Repo not found: repo_doesnotexist'));  // RepoId in repos
+
+      await expect(create('feature-x', {
+        from: testRepoId,
+        repos: ['repo_doesnotexist' as RepoId],
+      })).rejects.toThrow('Repo not found: repo_doesnotexist');
+
+      expect(mockInternalCreate).not.toHaveBeenCalled();
+    });
+
+    it('repos: [] → overrides config, passes empty childRepos', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockInternalCreate.mockResolvedValue({
+        id: 'project-feature-x',
+        root: '/home/user/worktrees/project/feature-x',
+        branch: 'feature-x',
+        repos: ['project'],
+      });
+
+      await create('feature-x', {
+        from: testRepoId,
+        repos: [],
+      });
+
+      expect(mockInternalCreate).toHaveBeenCalledWith('feature-x', {
+        from: '/repos/project',
+        childRepos: [],
+      });
+    });
+
+    it('repos with Windows-style absolute path → treated as absolute, not relative', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockRealpathSync.mockImplementation((p: string) => p);
+      mockInternalCreate.mockResolvedValue({
+        id: 'project-feature-x',
+        root: '/home/user/worktrees/project/feature-x',
+        branch: 'feature-x',
+        repos: ['project', 'winrepo'],
+      });
+
+      // Windows paths need explicit name since basename doesn't parse backslashes on POSIX
+      await create('feature-x', {
+        from: testRepoId,
+        repos: [{ path: 'C:\\repos\\winrepo', name: 'winrepo' }],
+      });
+
+      // Key assertion: path is used as-is (not resolved against parent root)
+      expect(mockInternalCreate).toHaveBeenCalledWith('feature-x', {
+        from: '/repos/project',
+        childRepos: [{ path: 'C:\\repos\\winrepo', name: 'winrepo' }],
+      });
+    });
+
+    it('repos omitted → no childRepos passed to internal create', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockInternalCreate.mockResolvedValue({
+        id: 'project-feature-x',
+        root: '/home/user/worktrees/project/feature-x',
+        branch: 'feature-x',
+        repos: ['project'],
+      });
+
+      await create('feature-x', { from: testRepoId });
+
+      expect(mockInternalCreate).toHaveBeenCalledWith('feature-x', {
+        from: '/repos/project',
+      });
     });
   });
 

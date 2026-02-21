@@ -247,3 +247,50 @@ Add an integration-style test that exercises the full flow:
 **Lines of code (estimate):** ~120 implementation, ~200 tests
 
 This is a contained change. The new code paths are small because they feed into existing machinery (preflight, worktree creation, rollback, state management) that already handles multi-repo.
+
+## Testing
+All tests passing:
+- **800 unit tests** (5 new for multi-repo-worktree feature)
+- **34 e2e tests** (9 new for multi-repo-worktree feature)
+- `npm run build` clean
+
+New unit tests (`api.test.ts`):
+- RepoId resolution via registry
+- RepoSpec absolute/relative path handling
+- Windows-style absolute path detection
+- Explicit name override
+- Parent repo deduplication
+- Duplicate path/name validation
+- Non-existent RepoId error propagation
+- `repos: []` overrides config
+- No childRepos when repos omitted
+
+New unit tests (`create.test.ts`):
+- childRepos overrides config repos
+- Empty childRepos → single-repo workspace
+- childRepos + config setup → setup still runs
+- childRepos + config hooks → hooks still run
+- childRepos + config setup + hooks → full lifecycle
+
+New e2e tests (`workspace.e2e.test.ts`):
+- Full lifecycle with independent sibling repos
+- childRepos overrides config repos
+- Commit in child → merge-close → changes land in source
+- Empty childRepos → single-repo workspace
+- Rollback on preflight failure
+- Public API with RepoId refs (registry resolution)
+- Public API with RepoSpec inline paths
+- Public API with repos: [] (config override)
+- Public API with mixed RepoId + RepoSpec
+
+## Done-when
+All acceptance criteria met:
+1. ✅ `workspace.create(branch, { from, repos: [RepoId, RepoId] })` creates worktrees across all specified repos
+2. ✅ `workspace.create(branch, { from, repos: [{ path: '/abs/path' }] })` works with absolute paths
+3. ✅ `workspace.create(branch, { from, repos: [{ path: 'relative' }] })` resolves relative to parent root
+4. ✅ When `repos` is provided, `.grove.yaml` `workspace.repos` is ignored for the repo list
+5. ✅ When `repos` is provided, `.grove.yaml` `setup` and `hooks` still execute
+6. ✅ When `repos` is omitted, behavior is identical to current (no regression)
+7. ✅ `RepoSpec` and `RepoRef` types are exported from `@twiglylabs/grove`
+8. ✅ All existing tests pass unchanged
+9. ✅ `npm run build` succeeds with no type errors

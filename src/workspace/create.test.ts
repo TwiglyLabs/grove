@@ -547,4 +547,194 @@ describe('createWorkspace', () => {
     const lastStateWrite = mockWriteWorkspaceState.mock.calls[mockWriteWorkspaceState.mock.calls.length - 1][0] as WorkspaceState;
     expect(lastStateWrite.status).toBe('failed');
   });
+
+  it('childRepos provided → uses those instead of config repos', async () => {
+    // Config has repos, but childRepos should override
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [{ path: 'config-repo' }],
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+        { name: 'api', role: 'child', source: '/repos/api', parentBranch: 'main' },
+        { name: 'web', role: 'child', source: '/repos/web', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    const result = await createWorkspace('feature-x', {
+      from: '/repos/project',
+      childRepos: [
+        { path: '/repos/api', name: 'api' },
+        { path: '/repos/web', name: 'web' },
+      ],
+    });
+
+    expect(result.repos).toEqual(['project', 'api', 'web']);
+
+    // Config repo path validation should NOT be called — childRepos bypass it
+    expect(mockValidateRepoPaths).not.toHaveBeenCalled();
+
+    // Preflight should receive sources built from childRepos
+    const preflightSources = mockPreflightCreate.mock.calls[0][0];
+    expect(preflightSources).toEqual([
+      { path: '/repos/project', role: 'parent' },
+      { path: '/repos/api', role: 'child', name: 'api' },
+      { path: '/repos/web', role: 'child', name: 'web' },
+    ]);
+  });
+
+  it('childRepos empty array → single-repo workspace', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [{ path: 'config-repo' }],
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    const result = await createWorkspace('feature-x', {
+      from: '/repos/project',
+      childRepos: [],
+    });
+
+    expect(result.repos).toEqual(['project']);
+
+    // Preflight should only get parent
+    const preflightSources = mockPreflightCreate.mock.calls[0][0];
+    expect(preflightSources).toEqual([
+      { path: '/repos/project', role: 'parent' },
+    ]);
+  });
+
+  it('childRepos provided + config exists → childRepos wins, setup from config still runs', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [{ path: 'config-repo' }],
+      setup: ['npm install'],
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+        { name: 'api', role: 'child', source: '/repos/api', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    mockRunSetupCommands.mockReturnValue([
+      { command: 'npm install', exitCode: 0, stdout: 'ok', stderr: '', durationMs: 100 },
+    ]);
+
+    const result = await createWorkspace('feature-x', {
+      from: '/repos/project',
+      childRepos: [{ path: '/repos/api', name: 'api' }],
+    });
+
+    // Setup commands should still run (from config)
+    expect(mockRunSetupCommands).toHaveBeenCalledTimes(2); // parent + child
+    expect(result.setup).toHaveLength(2);
+  });
+
+  it('childRepos provided + config with hooks → childRepos wins, hooks from config still run', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [{ path: 'config-repo' }],
+      hooks: { postCreate: './scripts/post-create.sh' },
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+        { name: 'api', role: 'child', source: '/repos/api', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    mockRunHook.mockReturnValue({
+      command: './scripts/post-create.sh',
+      exitCode: 0,
+      stdout: 'done',
+      stderr: '',
+      durationMs: 50,
+    });
+
+    const result = await createWorkspace('feature-x', {
+      from: '/repos/project',
+      childRepos: [{ path: '/repos/api', name: 'api' }],
+    });
+
+    // Config repo list should be ignored (childRepos wins)
+    expect(mockValidateRepoPaths).not.toHaveBeenCalled();
+
+    // Hook from config should still run
+    expect(mockRunHook).toHaveBeenCalledWith(
+      './scripts/post-create.sh',
+      '/home/user/worktrees/project/feature-x',
+    );
+    expect(result.hookResult).toMatchObject({
+      command: './scripts/post-create.sh',
+      exitCode: 0,
+    });
+  });
+
+  it('childRepos provided + config with setup and hooks → full lifecycle from config', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [{ path: 'config-repo' }],
+      setup: ['npm install'],
+      hooks: { postCreate: './scripts/post-create.sh' },
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+        { name: 'api', role: 'child', source: '/repos/api', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    mockRunSetupCommands.mockReturnValue([
+      { command: 'npm install', exitCode: 0, stdout: 'ok', stderr: '', durationMs: 100 },
+    ]);
+
+    mockRunHook.mockReturnValue({
+      command: './scripts/post-create.sh',
+      exitCode: 0,
+      stdout: 'done',
+      stderr: '',
+      durationMs: 50,
+    });
+
+    const result = await createWorkspace('feature-x', {
+      from: '/repos/project',
+      childRepos: [{ path: '/repos/api', name: 'api' }],
+    });
+
+    // childRepos used for repo list
+    const preflightSources = mockPreflightCreate.mock.calls[0][0];
+    expect(preflightSources).toEqual([
+      { path: '/repos/project', role: 'parent' },
+      { path: '/repos/api', role: 'child', name: 'api' },
+    ]);
+
+    // Setup from config runs in all worktrees
+    expect(mockRunSetupCommands).toHaveBeenCalledTimes(2);
+
+    // Hook from config runs
+    expect(mockRunHook).toHaveBeenCalledTimes(1);
+    expect(result.setup).toHaveLength(2);
+    expect(result.hookResult).toBeDefined();
+  });
 });

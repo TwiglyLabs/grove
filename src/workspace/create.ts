@@ -23,7 +23,7 @@ function getRepoRoot(fromPath?: string): string {
 
 export async function createWorkspace(
   branch: string,
-  options: { from?: string } = {},
+  options: { from?: string; childRepos?: Array<{ path: string; name: string }> } = {},
 ): Promise<CreateResult> {
   const sourceRoot = resolve(getRepoRoot(options.from));
   const projectName = basename(sourceRoot);
@@ -43,7 +43,13 @@ export async function createWorkspace(
     { path: sourceRoot, role: 'parent' },
   ];
 
-  if (workspaceConfig?.repos) {
+  if (options.childRepos !== undefined) {
+    // API-provided repos — already resolved to absolute paths
+    for (const repo of options.childRepos) {
+      sources.push({ path: repo.path, role: 'child', name: repo.name });
+    }
+  } else if (workspaceConfig?.repos) {
+    // Config-provided repos — resolve relative to parent root
     const pathErrors = validateRepoPaths(workspaceConfig.repos.map(r => r.path));
     if (pathErrors.length > 0) {
       throw new Error(pathErrors.join('\n'));

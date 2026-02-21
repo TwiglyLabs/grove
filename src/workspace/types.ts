@@ -51,8 +51,19 @@ export interface SetupResult {
 
 // --- Public API types ---
 
+/** Inline repo specification — used when a repo is not in the registry */
+export interface RepoSpec {
+  path: string;
+  name?: string;
+  remote?: string;
+}
+
+/** A reference to a repo — either a registered RepoId or an inline spec */
+export type RepoRef = RepoId | RepoSpec;
+
 export interface CreateOptions {
   from: RepoId;
+  repos?: RepoRef[];
   signal?: AbortSignal;
 }
 

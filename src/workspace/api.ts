@@ -6,6 +6,8 @@
  * to WorkspaceIds before calling these functions.
  */
 
+import { basename, resolve } from 'path';
+import { realpathSync } from 'fs';
 import { createWorkspace as internalCreate, type CreateResult as InternalCreateResult } from './create.js';
 import { listWorkspaces as internalList } from './status.js';
 import { getWorkspaceStatus as internalGetStatus } from './status.js';
@@ -18,9 +20,9 @@ import {
 } from './state.js';
 import type { WorkspaceState } from './types.js';
 import type { RepoId, WorkspaceId } from '../shared/identity.js';
-import { asWorkspaceId } from '../shared/identity.js';
-import { resolveRepoPath } from '../repo/api.js';
-import { WorkspaceNotFoundError, ConflictError } from '../shared/errors.js';
+import { asWorkspaceId, isRepoId } from '../shared/identity.js';
+import { resolveRepoPath, get as getRepo } from '../repo/api.js';
+import { WorkspaceNotFoundError, ConflictError, RepoNotFoundError } from '../shared/errors.js';
 import type {
   CreateOptions,
   CreateResult,
@@ -35,6 +37,8 @@ import type {
   DryRunResult,
   WorkspaceEvents,
   EnvironmentDescriptor,
+  RepoRef,
+  RepoSpec,
 } from './types.js';
 import { loadConfig } from '../config.js';
 import { readState as readEnvState } from '../environment/state.js';
@@ -50,7 +54,18 @@ export async function create(
 ): Promise<CreateResult> {
   const repoPath = await resolveRepoPath(options.from);
 
-  const result = await internalCreate(branch, { from: repoPath });
+  // Resolve repo refs if provided (repos: [] means "no children, override config")
+  let childRepos: Array<{ path: string; name: string }> | undefined;
+  if (options.repos !== undefined) {
+    childRepos = options.repos.length > 0
+      ? await resolveRepoRefs(options.repos, repoPath)
+      : [];
+  }
+
+  const result = await internalCreate(branch, {
+    from: repoPath,
+    ...(childRepos !== undefined ? { childRepos } : {}),
+  });
 
   return {
     id: asWorkspaceId(result.id),
@@ -253,6 +268,59 @@ export function describe(workspace: WorkspaceId): EnvironmentDescriptor {
     testing: { commands },
     shell: { targets },
   };
+}
+
+/** Resolve RepoRef[] to absolute paths and names */
+async function resolveRepoRefs(
+  refs: RepoRef[],
+  parentPath: string,
+): Promise<Array<{ path: string; name: string }>> {
+  const resolved: Array<{ path: string; name: string }> = [];
+  const seenPaths = new Set<string>();
+  const seenNames = new Set<string>();
+  const parentReal = realpathSync(parentPath);
+
+  for (const ref of refs) {
+    let refPath: string;
+    let name: string;
+
+    if (typeof ref === 'string' && isRepoId(ref)) {
+      // RepoId — resolve via registry
+      refPath = await resolveRepoPath(ref);
+      const entry = await getRepo(ref);
+      if (!entry) throw new RepoNotFoundError(ref);
+      name = entry.name;
+    } else {
+      const spec = ref as RepoSpec;
+      if (spec.path.startsWith('/') || /^[A-Za-z]:/.test(spec.path)) {
+        // Absolute path
+        refPath = spec.path;
+        name = spec.name ?? basename(spec.path);
+      } else {
+        // Relative path — resolve against parent repo root
+        refPath = resolve(parentPath, spec.path);
+        name = spec.name ?? spec.path;
+      }
+    }
+
+    // Deduplicate: skip if same as parent
+    const realPath = realpathSync(refPath);
+    if (realPath === parentReal) continue;
+
+    // Validate uniqueness
+    if (seenPaths.has(realPath)) {
+      throw new Error(`Duplicate repo path: ${refPath}`);
+    }
+    if (seenNames.has(name)) {
+      throw new Error(`Duplicate repo name '${name}' — use the 'name' field to disambiguate`);
+    }
+
+    seenPaths.add(realPath);
+    seenNames.add(name);
+    resolved.push({ path: realPath, name });
+  }
+
+  return resolved;
 }
 
 /** Resolve a WorkspaceId to a WorkspaceState, throwing if not found */
