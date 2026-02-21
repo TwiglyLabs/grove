@@ -96,6 +96,17 @@ async function startFrontends(config: GroveConfig, state: EnvironmentState, opti
   }
 }
 
+async function killStartedProcesses(state: EnvironmentState): Promise<void> {
+  for (const [name, processInfo] of Object.entries(state.processes)) {
+    try {
+      process.kill(processInfo.pid, 'SIGTERM');
+    } catch {
+      // Process may already be dead
+    }
+    delete state.processes[name];
+  }
+}
+
 async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Promise<HealthCheckResult[]> {
   printSection('Running health checks');
   const results: HealthCheckResult[] = [];
@@ -181,8 +192,24 @@ export async function ensureEnvironment(
   printSection('Waiting for Deployments');
   await waitForDeployments(state.namespace);
 
-  await startPortForwards(config, state);
-  await startFrontends(config, state, options);
+  try {
+    await startPortForwards(config, state);
+  } catch (error) {
+    await killStartedProcesses(state);
+    await writeState(state, config);
+    throw error;
+  }
+  await writeState(state, config);
+
+  try {
+    await startFrontends(config, state, options);
+  } catch (error) {
+    await killStartedProcesses(state);
+    await writeState(state, config);
+    throw error;
+  }
+  await writeState(state, config);
+
   const healthResults = await healthCheckAll(config, state);
 
   // Create and start port-forward supervisor for continuous monitoring

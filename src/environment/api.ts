@@ -11,7 +11,8 @@ import { join } from 'path';
 import { load as loadConfig } from '../shared/config.js';
 import type { GroveConfig } from '../config.js';
 import type { RepoId } from '../shared/identity.js';
-import { BuildFailedError, EnvironmentNotRunningError, GroveError, NamespaceDeletionFailedError } from '../shared/errors.js';
+import { BuildFailedError, EnvironmentNotRunningError, GroveError } from '../shared/errors.js';
+import { printError } from '../shared/output.js';
 import type {
   EnvironmentEvents,
   UpOptions,
@@ -210,8 +211,17 @@ export async function destroy(
       { stdio: 'pipe', timeout: 70_000 },
     );
     namespaceDeleted = true;
-  } catch {
-    // Namespace may not exist or deletion timed out
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const stderr = (error as { stderr?: string | Buffer })?.stderr;
+    const stderrStr = typeof stderr === 'string' ? stderr : stderr instanceof Buffer ? stderr.toString() : '';
+    const detail = stderrStr || message;
+
+    // "not found" is expected (namespace already gone) — stay silent
+    const isNotFound = /not\s*found/i.test(detail) || /not\s*found/i.test(message);
+    if (!isNotFound) {
+      printError(`Failed to delete namespace ${state.namespace}: ${detail}`);
+    }
   }
 
   // Remove state file
