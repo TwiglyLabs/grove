@@ -1,5 +1,5 @@
 /**
- * Grove API: Simulator module
+ * Simulator slice — public API.
  *
  * iOS simulator management. Operations that need repo context
  * resolve config and environment state from RepoId internally.
@@ -18,7 +18,7 @@ import {
   connectToMetro as internalConnect,
   listProjectSimulators as internalList,
   findAppBinary,
-} from '../simulator/simulator.js';
+} from './simulator.js';
 
 /**
  * Clone (or ensure) a simulator for this repo's branch.

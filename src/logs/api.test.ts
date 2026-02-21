@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-const testDir = join(tmpdir(), `grove-api-logs-test-${process.pid}`);
+const testDir = join(tmpdir(), `grove-logs-api-test-${process.pid}`);
 
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os');
@@ -14,7 +14,7 @@ vi.mock('os', async () => {
 });
 
 const { add } = await import('../repo/api.js');
-const { readLogs } = await import('./logs.js');
+const { readLogs } = await import('./api.js');
 
 function createRepoDir(name: string, groveYaml?: string): string {
   const repoPath = join(testDir, 'repos', name);

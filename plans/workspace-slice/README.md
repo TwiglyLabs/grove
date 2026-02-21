@@ -1,6 +1,6 @@
 ---
 title: 'Workspace Slice: Multi-Repo Lifecycle'
-status: not_started
+status: done
 depends_on:
   - repo-slice
 description: >-
@@ -9,6 +9,8 @@ description: >-
 tags:
   - slice
 not_started_at: '2026-02-20T05:15:41.699Z'
+started_at: '2026-02-21T00:21:53.526Z'
+completed_at: '2026-02-21T00:37:16.514Z'
 ---
 
 ## Problem

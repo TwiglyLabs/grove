@@ -43,64 +43,50 @@ export type {
   Frontend,
 } from './environment/config.js';
 
-// --- Satellite slice schemas (remain in root until slices own them) ---
+// --- Testing slice schemas (imported from owning slice) ---
+import {
+  TestSuiteSchema,
+  MobileTestingSchema,
+  PlatformTestingSchema,
+  ObservabilitySchema,
+  TestingSchema,
+} from './testing/config.js';
 
-// → satellite-slices (testing)
-export const TestSuiteSchema = z.object({
-  name: z.string(),
-  paths: z.array(z.string()),
-});
+// Re-export testing schemas for consumers
+export {
+  TestSuiteSchema,
+  MobileTestingSchema,
+  PlatformTestingSchema,
+  ObservabilitySchema,
+  TestingSchema,
+};
 
-export const MobileTestingSchema = z.object({
-  runner: z.string().default('maestro'),
-  basePath: z.string(),
-  suites: z.array(TestSuiteSchema).optional(),
-  envVars: z.record(z.string()).optional(),
-});
+// Re-export testing types
+export type {
+  TestSuite,
+  MobileTesting,
+  PlatformTesting,
+  Observability,
+  Testing,
+} from './testing/config.js';
 
-export const PlatformTestingSchema = z.object({
-  runner: z.string(),
-  cwd: z.string(),
-  envVars: z.record(z.string()).optional(),
-});
+// --- Simulator slice schemas (imported from owning slice) ---
+import { SimulatorSchema } from './simulator/config.js';
 
-export const ObservabilitySchema = z.object({
-  serviceName: z.string(),
-  traceEndpoint: z.string().optional(),
-});
+// Re-export simulator schemas for consumers
+export { SimulatorSchema };
 
-export const TestingSchema = z.object({
-  mobile: MobileTestingSchema.optional(),
-  webapp: PlatformTestingSchema.optional(),
-  api: PlatformTestingSchema.optional(),
-  observability: ObservabilitySchema.optional(),
-  historyDir: z.string().default('.grove/test-history'),
-  historyLimit: z.number().default(10),
-  defaultTimeout: z.number().default(300000),
-});
+// Re-export simulator types
+export type { SimulatorConfig } from './simulator/config.js';
 
-// → satellite-slices (simulator)
-export const SimulatorSchema = z.object({
-  platform: z.enum(['ios']).default('ios'),
-  bundleId: z.string(),
-  appName: z.string(),
-  simulatorPrefix: z.string(),
-  baseDevice: z.array(z.string()),
-  deepLinkScheme: z.string(),
-  metroFrontend: z.string(),
-});
+// --- Shell slice schemas (imported from owning slice) ---
+import { ShellTargetSchema, ShellTargetsSchema } from './shell/config.js';
 
-// → satellite-slices (shell, reload)
-export const ShellTargetSchema = z.object({
-  name: z.string(),
-  podSelector: z.string().optional(),
-  shell: z.string().optional(),
-});
+// Re-export shell schemas for consumers
+export { ShellTargetSchema };
 
-export const UtilitiesSchema = z.object({
-  shellTargets: z.array(ShellTargetSchema).optional(),
-  reloadTargets: ReloadTargetsSchema,
-});
+// Re-export shell types
+export type { ShellTarget } from './shell/config.js';
 
 // --- Workspace slice schemas (imported from owning slice) ---
 import { WorkspaceRepoSchema, WorkspaceConfigSchema } from './workspace/config.js';
@@ -108,6 +94,12 @@ export { WorkspaceRepoSchema, WorkspaceConfigSchema };
 
 // --- Composed root schema ---
 // Assembles domain fragments into the full config shape.
+// UtilitiesSchema is replaced: shellTargets comes from shell slice, reloadTargets from environment.
+const UtilitiesSchema = z.object({
+  shellTargets: ShellTargetsSchema,
+  reloadTargets: ReloadTargetsSchema,
+});
+
 export const GroveConfigSchema = z.object({
   project: ProjectSchema,
   helm: HelmSchema,
@@ -120,13 +112,6 @@ export const GroveConfigSchema = z.object({
   workspace: WorkspaceConfigSchema.optional(),
 });
 
-export type TestSuite = z.infer<typeof TestSuiteSchema>;
-export type MobileTesting = z.infer<typeof MobileTestingSchema>;
-export type PlatformTesting = z.infer<typeof PlatformTestingSchema>;
-export type Observability = z.infer<typeof ObservabilitySchema>;
-export type Testing = z.infer<typeof TestingSchema>;
-export type SimulatorConfig = z.infer<typeof SimulatorSchema>;
-export type ShellTarget = z.infer<typeof ShellTargetSchema>;
 export type { WorkspaceRepo, WorkspaceConfig } from './workspace/config.js';
 export type Utilities = z.infer<typeof UtilitiesSchema>;
 export type GroveConfig = z.infer<typeof GroveConfigSchema> & {

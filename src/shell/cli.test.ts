@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before imports
-vi.mock('../api/shell.js', () => ({
+vi.mock('./api.js', () => ({
   getShellCommand: vi.fn(),
 }));
 
@@ -18,8 +18,8 @@ vi.mock('../shared/output.js', () => ({
 }));
 
 import { spawn } from 'child_process';
-import { shellCommand } from './shell.js';
-import { getShellCommand } from '../api/shell.js';
+import { shellCommand } from './cli.js';
+import { getShellCommand } from './api.js';
 import { load as loadConfig } from '../shared/config.js';
 import { printError } from '../shared/output.js';
 import { ExitError, mockProcessExit } from '../testing/test-helpers.js';

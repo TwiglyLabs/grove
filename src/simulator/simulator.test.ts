@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SimulatorConfig } from '../config.js';
+import type { SimulatorConfig } from './config.js';
 
 const { mockExecSync, mockExistsSync, mockReaddirSync, mockStatSync } = vi.hoisted(() => ({
   mockExecSync: vi.fn(),

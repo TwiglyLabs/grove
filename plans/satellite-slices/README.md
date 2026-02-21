@@ -1,6 +1,6 @@
 ---
 title: 'Satellite Slices: Testing, Shell, Logs, Simulator'
-status: not_started
+status: done
 depends_on:
   - environment-slice
 description: >-
@@ -9,6 +9,7 @@ description: >-
 tags:
   - slice
 not_started_at: '2026-02-20T05:15:42.997Z'
+completed_at: '2026-02-21T01:02:15.552Z'
 ---
 
 ## Problem

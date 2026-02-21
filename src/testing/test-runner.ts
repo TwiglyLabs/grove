@@ -9,7 +9,7 @@ import { sanitizeBranchName } from '../workspace/sanitize.js';
 import { resolveTemplates } from '../environment/template.js';
 import { parseJunitXml, parsePlaywrightJson, parseVitestJson } from './result-parsers.js';
 import { archiveResults } from './result-archive.js';
-import type { TestOptions, TestResult, FailureDetail } from '../types.js';
+import type { TestOptions, TestResult, FailureDetail } from './types.js';
 
 // --- Suite Mapping ---
 

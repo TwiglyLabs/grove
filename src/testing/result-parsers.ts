@@ -1,4 +1,4 @@
-import type { FailureDetail } from '../types.js';
+import type { FailureDetail } from './types.js';
 
 interface ParseResult {
   total: number;

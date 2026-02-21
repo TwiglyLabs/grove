@@ -1,5 +1,5 @@
 /**
- * Grove API: Logs module
+ * Logs slice — public API.
  *
  * File-based log reading and kubectl pod log streaming.
  * Resolves namespace from repo's environment state internally.

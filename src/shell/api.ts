@@ -1,5 +1,5 @@
 /**
- * Grove API: Shell module
+ * Shell slice — public API.
  *
  * Returns kubectl exec command parts for the consumer to spawn.
  * The Electron app opens its own terminal emulator (xterm.js) with these parts.

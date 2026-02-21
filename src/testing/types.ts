@@ -1,23 +1,15 @@
 /**
- * Shared types for grove CLI.
+ * Testing slice types.
+ *
+ * Owns all test-related types: platforms, options, results, events.
  */
 
-/** Namespace type for environment isolation */
-export type NamespaceType = 'dev' | 'e2e-api' | 'e2e-webapp' | 'e2e-mobile';
-
-/** Namespace metadata for prune/list */
-export interface NamespaceInfo {
-  name: string;
-  branch: string;
-  createdAt: Date;
-  type: NamespaceType;
-  hasActivePortForwards: boolean;
-}
+import type { GroveError } from '../shared/errors.js';
 
 /** Test platform */
 export type TestPlatform = 'mobile' | 'webapp' | 'api';
 
-/** Options for running tests */
+/** Options for running tests (internal — used by the runner) */
 export interface TestOptions {
   platform: TestPlatform;
   suite?: string;
@@ -77,4 +69,27 @@ export interface TestResult {
   failures: FailureDetail[];
   artifacts: ArtifactPaths;
   logs: LogPaths;
+}
+
+/** Options for the public API run() function */
+export interface TestRunOptions {
+  platform: TestPlatform;
+  suite?: string;
+  flow?: string[];
+  file?: string;
+  grep?: string;
+  useDev?: boolean;
+  excludeAi?: boolean;
+  ai?: boolean;
+  noEnsure?: boolean;
+  timeout?: number;
+  verbose?: boolean;
+  signal?: AbortSignal;
+}
+
+/** Callback-based event interface for test runs */
+export interface TestEvents {
+  onProgress?(phase: string, detail?: string): void;
+  onTestComplete?(test: string, result: 'pass' | 'fail' | 'skip'): void;
+  onError?(error: GroveError): void;
 }

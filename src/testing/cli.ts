@@ -1,6 +1,12 @@
+/**
+ * Testing slice — CLI subcommand.
+ *
+ * grove test <mobile|webapp|api> [options]
+ */
+
 import type { RepoId } from '../shared/identity.js';
-import type { TestPlatform } from '../types.js';
-import { runTests } from '../api/testing.js';
+import type { TestPlatform } from './types.js';
+import { runTests } from './api.js';
 import { load as loadConfig } from '../shared/config.js';
 import { printError, printTestResult, printTestFailures } from '../shared/output.js';
 

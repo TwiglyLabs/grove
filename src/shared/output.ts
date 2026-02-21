@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import type { FailureDetail, TestResult } from '../types.js';
+import type { FailureDetail, TestResult } from '../testing/types.js';
 
 export function jsonSuccess<T>(data: T): void {
   console.log(JSON.stringify({ ok: true, data }));

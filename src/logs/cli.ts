@@ -1,6 +1,12 @@
+/**
+ * Logs slice — CLI subcommand.
+ *
+ * grove logs <service> [--pod]
+ */
+
 import { spawn } from 'child_process';
 import type { RepoId } from '../shared/identity.js';
-import { readLogs } from '../api/logs.js';
+import { readLogs } from './api.js';
 import { load as loadConfig } from '../shared/config.js';
 import { readState } from '../environment/state.js';
 import { printWarning, printError } from '../shared/output.js';

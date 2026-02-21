@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import type { SimulatorConfig } from '../config.js';
+import type { SimulatorConfig } from './config.js';
 import type { SimulatorState } from '../environment/types.js';
 import { sanitizeBranchName } from '../workspace/sanitize.js';
 

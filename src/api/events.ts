@@ -5,8 +5,6 @@
  * fire-and-forget — the API does not await them.
  */
 
-import type { GroveError } from '../shared/errors.js';
-
 // --- Environment events (re-exported from environment slice) ---
 
 export type { EnvironmentPhase, EnvironmentEvents } from '../environment/types.js';
@@ -15,10 +13,6 @@ export type { EnvironmentPhase, EnvironmentEvents } from '../environment/types.j
 
 export type { WorkspaceEvents } from '../workspace/types.js';
 
-// --- Non-environment events (remain here until satellite slices own them) ---
+// --- Testing events (re-exported from testing slice) ---
 
-export interface TestEvents {
-  onProgress?(phase: string, detail?: string): void;
-  onTestComplete?(test: string, result: 'pass' | 'fail' | 'skip'): void;
-  onError?(error: GroveError): void;
-}
+export type { TestEvents } from '../testing/types.js';

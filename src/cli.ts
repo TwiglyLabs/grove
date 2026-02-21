@@ -21,9 +21,9 @@ import {
   pruneCommand,
   reloadCommand,
 } from './environment/cli.js';
-import { logsCommand } from './commands/logs.js';
-import { testCommand } from './commands/test.js';
-import { shellCommand } from './commands/shell.js';
+import { logsCommand } from './logs/cli.js';
+import { testCommand } from './testing/cli.js';
+import { shellCommand } from './shell/cli.js';
 import { workspaceCommand } from './workspace/cli.js';
 import { repoCommand } from './repo/cli.js';
 import { requestCommand } from './request/cli.js';

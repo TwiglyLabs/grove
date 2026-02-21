@@ -1,5 +1,5 @@
 /**
- * Grove API: Testing module
+ * Testing slice — public API.
  *
  * Test execution and result management.
  * Accepts RepoId, resolves config internally.
@@ -9,10 +9,8 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { load as loadConfig } from '../shared/config.js';
 import type { RepoId } from '../shared/identity.js';
-import type { TestEvents } from './events.js';
-import type { TestRunOptions } from './types.js';
-import type { TestResult, TestPlatform } from '../types.js';
-import { runTests as internalRunTests } from '../testing/test-runner.js';
+import type { TestEvents, TestRunOptions, TestResult, TestPlatform } from './types.js';
+import { runTests as internalRunTests } from './test-runner.js';
 
 /**
  * Run tests for a repo. Resolves config from RepoId.

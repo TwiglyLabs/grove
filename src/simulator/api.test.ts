@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-const testDir = join(tmpdir(), `grove-api-sim-test-${process.pid}`);
+const testDir = join(tmpdir(), `grove-sim-api-test-${process.pid}`);
 
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os');
@@ -14,7 +14,7 @@ vi.mock('os', async () => {
 });
 
 const { add } = await import('../repo/api.js');
-const { connectMetro, cloneSimulator } = await import('./simulator.js');
+const { connectMetro, cloneSimulator } = await import('./api.js');
 const { EnvironmentNotRunningError } = await import('../shared/errors.js');
 
 function createRepoDir(name: string, groveYaml?: string): string {
