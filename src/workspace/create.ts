@@ -4,13 +4,16 @@ import { loadWorkspaceConfig } from './config.js';
 import { preflightCreate, validateRepoPaths } from './preflight.js';
 import { createWorktree, removeWorktree, deleteBranch, getWorktreeBasePath } from './git.js';
 import { writeWorkspaceState, readWorkspaceState, deleteWorkspaceState } from './state.js';
-import type { WorkspaceState, WorkspaceRepoState } from './types.js';
+import { runSetupCommands, runHook } from './setup.js';
+import type { WorkspaceState, WorkspaceRepoState, SetupResult } from './types.js';
 
 export interface CreateResult {
   id: string;
   root: string;
   repos: string[];
   branch: string;
+  setup?: SetupResult[];
+  hookResult?: SetupResult;
 }
 
 function getRepoRoot(fromPath?: string): string {
@@ -108,11 +111,60 @@ export async function createWorkspace(
     throw error;
   }
 
+  // Run setup commands for each repo worktree
+  let allSetupResults: SetupResult[] | undefined;
+  let hookResult: SetupResult | undefined;
+
+  if (workspaceConfig?.setup && workspaceConfig.setup.length > 0) {
+    const setupResults: SetupResult[] = [];
+    let setupFailed = false;
+
+    for (const repo of repos) {
+      const results = runSetupCommands(workspaceConfig.setup, repo.worktree);
+      setupResults.push(...results);
+
+      const failedResult = results.find(r => r.exitCode !== 0);
+      if (failedResult) {
+        setupFailed = true;
+        break;
+      }
+    }
+
+    allSetupResults = setupResults;
+
+    if (setupFailed) {
+      state.status = 'failed';
+      state.updatedAt = new Date().toISOString();
+      await writeWorkspaceState(state);
+
+      return {
+        id: preflight.workspaceId,
+        root: worktreeRoot,
+        repos: repos.map(r => r.name),
+        branch,
+        setup: allSetupResults,
+      };
+    }
+  }
+
+  // Run postCreate hook
+  if (workspaceConfig?.hooks?.postCreate) {
+    hookResult = runHook(workspaceConfig.hooks.postCreate, worktreeRoot);
+
+    if (hookResult.exitCode !== 0) {
+      state.status = 'failed';
+      state.updatedAt = new Date().toISOString();
+      await writeWorkspaceState(state);
+    }
+  }
+
   return {
     id: preflight.workspaceId,
     root: worktreeRoot,
     repos: repos.map(r => r.name),
     branch,
+    setup: allSetupResults,
+    hookResult,
   };
 }
 

@@ -8,8 +8,20 @@ export const WorkspaceRepoSchema = z.object({
   remote: z.string().optional(),
 });
 
+export const SetupCommandSchema = z.array(z.string().min(1));
+export type SetupCommand = z.infer<typeof SetupCommandSchema>;
+
+export const HooksSchema = z.object({
+  postCreate: z.string().optional(),
+  preUp: z.string().optional(),
+  postUp: z.string().optional(),
+});
+export type Hooks = z.infer<typeof HooksSchema>;
+
 export const WorkspaceConfigSchema = z.object({
   repos: z.array(WorkspaceRepoSchema).min(1),
+  setup: SetupCommandSchema.optional(),
+  hooks: HooksSchema.optional(),
 });
 
 export type WorkspaceRepo = z.infer<typeof WorkspaceRepoSchema>;

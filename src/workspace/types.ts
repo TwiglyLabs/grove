@@ -39,6 +39,16 @@ export const WorkspaceState = z.object({
 });
 export type WorkspaceState = z.infer<typeof WorkspaceState>;
 
+// --- Setup result types ---
+
+export interface SetupResult {
+  command: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+}
+
 // --- Public API types ---
 
 export interface CreateOptions {
@@ -51,6 +61,8 @@ export interface CreateResult {
   root: string;
   branch: string;
   repos: string[];
+  setup?: SetupResult[];
+  hookResult?: SetupResult;
 }
 
 export interface ListOptions {

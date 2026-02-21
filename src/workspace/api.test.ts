@@ -130,6 +130,35 @@ describe('workspace api', () => {
       });
     });
 
+    it('passes through setup and hookResult from internal create', async () => {
+      mockResolveRepoPath.mockResolvedValue('/repos/project');
+      mockInternalCreate.mockResolvedValue({
+        id: 'project-feature-x',
+        root: '/home/user/worktrees/project/feature-x',
+        branch: 'feature-x',
+        repos: ['project'],
+        setup: [
+          { command: 'npm install', exitCode: 0, stdout: 'ok', stderr: '', durationMs: 100 },
+        ],
+        hookResult: {
+          command: './scripts/post-create.sh',
+          exitCode: 0,
+          stdout: 'done',
+          stderr: '',
+          durationMs: 50,
+        },
+      });
+
+      const result = await create('feature-x', { from: testRepoId });
+
+      expect(result.setup).toHaveLength(1);
+      expect(result.setup![0].command).toBe('npm install');
+      expect(result.hookResult).toMatchObject({
+        command: './scripts/post-create.sh',
+        exitCode: 0,
+      });
+    });
+
     it('propagates RepoNotFoundError from resolveRepoPath', async () => {
       mockResolveRepoPath.mockRejectedValue(new Error('Repo not found: repo_bad'));
 

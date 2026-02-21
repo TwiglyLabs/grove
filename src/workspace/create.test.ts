@@ -15,6 +15,8 @@ const {
   mockWriteWorkspaceState,
   mockReadWorkspaceState,
   mockDeleteWorkspaceState,
+  mockRunSetupCommands,
+  mockRunHook,
 } = vi.hoisted(() => ({
   mockExecSync: vi.fn(),
   mockLoadWorkspaceConfig: vi.fn(),
@@ -27,6 +29,8 @@ const {
   mockWriteWorkspaceState: vi.fn(),
   mockReadWorkspaceState: vi.fn(),
   mockDeleteWorkspaceState: vi.fn(),
+  mockRunSetupCommands: vi.fn(),
+  mockRunHook: vi.fn(),
 }));
 
 vi.mock('child_process', () => ({
@@ -55,12 +59,18 @@ vi.mock('./state.js', () => ({
   deleteWorkspaceState: mockDeleteWorkspaceState,
 }));
 
+vi.mock('./setup.js', () => ({
+  runSetupCommands: mockRunSetupCommands,
+  runHook: mockRunHook,
+}));
+
 describe('createWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExecSync.mockReturnValue('/repos/project');
     mockReadWorkspaceState.mockReturnValue(null);
     mockLoadWorkspaceConfig.mockReturnValue(null);
+    mockValidateRepoPaths.mockReturnValue([]);
     mockGetWorktreeBasePath.mockReturnValue('/home/user/worktrees');
     // Make writeWorkspaceState clone the argument to capture state at call time
     mockWriteWorkspaceState.mockImplementation((state) => {
@@ -356,5 +366,185 @@ describe('createWorkspace', () => {
       'git rev-parse --show-toplevel',
       expect.objectContaining({ cwd: '/other/project/subdir' })
     );
+  });
+
+  it('runs setup commands after worktree creation', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [{ path: 'public' }],
+      setup: ['npm install', 'npm run codegen'],
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+        { name: 'public', role: 'child', source: '/repos/project/public', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    mockRunSetupCommands.mockReturnValue([
+      { command: 'npm install', exitCode: 0, stdout: 'ok', stderr: '', durationMs: 100 },
+      { command: 'npm run codegen', exitCode: 0, stdout: 'ok', stderr: '', durationMs: 50 },
+    ]);
+
+    const result = await createWorkspace('feature-x');
+
+    // Setup runs for each repo worktree
+    expect(mockRunSetupCommands).toHaveBeenCalledTimes(2);
+    expect(mockRunSetupCommands).toHaveBeenCalledWith(
+      ['npm install', 'npm run codegen'],
+      '/home/user/worktrees/project/feature-x',
+    );
+    expect(mockRunSetupCommands).toHaveBeenCalledWith(
+      ['npm install', 'npm run codegen'],
+      '/home/user/worktrees/project/feature-x/public',
+    );
+
+    expect(result.setup).toHaveLength(4); // 2 commands × 2 repos
+  });
+
+  it('marks workspace as failed when setup command fails', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [],
+      setup: ['npm install', 'npm run codegen'],
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    mockRunSetupCommands.mockReturnValue([
+      { command: 'npm install', exitCode: 0, stdout: 'ok', stderr: '', durationMs: 100 },
+      { command: 'npm run codegen', exitCode: 1, stdout: '', stderr: 'codegen failed', durationMs: 50 },
+    ]);
+
+    const result = await createWorkspace('feature-x');
+
+    // Should still return a result (not throw) with the setup results
+    expect(result.setup).toHaveLength(2);
+    expect(result.setup![1].exitCode).toBe(1);
+
+    // Final state should be 'failed'
+    const lastStateWrite = mockWriteWorkspaceState.mock.calls[mockWriteWorkspaceState.mock.calls.length - 1][0] as WorkspaceState;
+    expect(lastStateWrite.status).toBe('failed');
+  });
+
+  it('runs postCreate hook after successful setup', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [],
+      setup: ['npm install'],
+      hooks: { postCreate: './scripts/post-create.sh' },
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    mockRunSetupCommands.mockReturnValue([
+      { command: 'npm install', exitCode: 0, stdout: 'ok', stderr: '', durationMs: 100 },
+    ]);
+
+    mockRunHook.mockReturnValue({
+      command: './scripts/post-create.sh',
+      exitCode: 0,
+      stdout: 'hook done',
+      stderr: '',
+      durationMs: 200,
+    });
+
+    const result = await createWorkspace('feature-x');
+
+    expect(mockRunHook).toHaveBeenCalledWith(
+      './scripts/post-create.sh',
+      '/home/user/worktrees/project/feature-x',
+    );
+    expect(result.hookResult).toMatchObject({
+      command: './scripts/post-create.sh',
+      exitCode: 0,
+    });
+  });
+
+  it('skips postCreate hook when setup fails', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [],
+      setup: ['npm install'],
+      hooks: { postCreate: './scripts/post-create.sh' },
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    mockRunSetupCommands.mockReturnValue([
+      { command: 'npm install', exitCode: 1, stdout: '', stderr: 'fail', durationMs: 100 },
+    ]);
+
+    const result = await createWorkspace('feature-x');
+
+    // Hook should not be called when setup failed
+    expect(mockRunHook).not.toHaveBeenCalled();
+    expect(result.hookResult).toBeUndefined();
+  });
+
+  it('does not run setup when no setup commands configured', async () => {
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    const result = await createWorkspace('feature-x');
+
+    expect(mockRunSetupCommands).not.toHaveBeenCalled();
+    expect(result.setup).toBeUndefined();
+  });
+
+  it('marks workspace as failed when postCreate hook fails', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [],
+      hooks: { postCreate: './scripts/post-create.sh' },
+    });
+
+    mockPreflightCreate.mockReturnValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    mockRunHook.mockReturnValue({
+      command: './scripts/post-create.sh',
+      exitCode: 1,
+      stdout: '',
+      stderr: 'hook failed',
+      durationMs: 50,
+    });
+
+    await createWorkspace('feature-x');
+
+    const lastStateWrite = mockWriteWorkspaceState.mock.calls[mockWriteWorkspaceState.mock.calls.length - 1][0] as WorkspaceState;
+    expect(lastStateWrite.status).toBe('failed');
   });
 });

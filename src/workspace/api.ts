@@ -53,6 +53,8 @@ export async function create(
     root: result.root,
     branch: result.branch,
     repos: result.repos,
+    setup: result.setup,
+    hookResult: result.hookResult,
   };
 }
 

@@ -89,8 +89,8 @@ export { ShellTargetSchema };
 export type { ShellTarget } from './shell/config.js';
 
 // --- Workspace slice schemas (imported from owning slice) ---
-import { WorkspaceRepoSchema, WorkspaceConfigSchema } from './workspace/config.js';
-export { WorkspaceRepoSchema, WorkspaceConfigSchema };
+import { WorkspaceRepoSchema, WorkspaceConfigSchema, SetupCommandSchema, HooksSchema } from './workspace/config.js';
+export { WorkspaceRepoSchema, WorkspaceConfigSchema, SetupCommandSchema, HooksSchema };
 
 // --- Composed root schema ---
 // Assembles domain fragments into the full config shape.
@@ -112,7 +112,7 @@ export const GroveConfigSchema = z.object({
   workspace: WorkspaceConfigSchema.optional(),
 });
 
-export type { WorkspaceRepo, WorkspaceConfig } from './workspace/config.js';
+export type { WorkspaceRepo, WorkspaceConfig, Hooks } from './workspace/config.js';
 export type Utilities = z.infer<typeof UtilitiesSchema>;
 export type GroveConfig = z.infer<typeof GroveConfigSchema> & {
   portBlockSize: number;

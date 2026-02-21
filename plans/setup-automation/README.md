@@ -1,6 +1,6 @@
 ---
 title: Setup Automation
-status: not_started
+status: done
 description: >-
   Add setup command list and lifecycle hooks to .grove.yaml, run automatically
   after workspace creation
@@ -10,6 +10,7 @@ tags:
   - workspace
   - canopy
 not_started_at: '2026-02-21T02:02:29.483Z'
+completed_at: '2026-02-21T03:20:09.370Z'
 ---
 
 ## Problem

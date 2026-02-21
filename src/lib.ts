@@ -55,6 +55,7 @@ export type {
 export type {
   WorkspaceStatus,
   SyncStatus,
+  SetupResult,
   CreateOptions,
   CreateResult,
   ListOptions,
