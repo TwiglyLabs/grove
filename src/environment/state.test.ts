@@ -207,7 +207,7 @@ describe('releasePortBlock', () => {
 
     releasePortBlock(config, 'test-branch');
 
-    expect(mockLockSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json');
+    expect(mockLockSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json', expect.objectContaining({ stale: 10000 }));
     expect(mockUnlinkSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json');
     expect(mockRelease).toHaveBeenCalled();
   });
@@ -259,7 +259,7 @@ describe('loadOrCreateState', () => {
 
     const result = await loadOrCreateState(makeConfig());
 
-    expect(mockLock).toHaveBeenCalledWith('/tmp/test-repo/.grove/feature--test-branch.json');
+    expect(mockLock).toHaveBeenCalledWith('/tmp/test-repo/.grove/feature--test-branch.json', expect.objectContaining({ retries: expect.any(Object) }));
     expect(result).toEqual(state);
     expect(mockRelease).toHaveBeenCalled();
   });
@@ -313,7 +313,8 @@ describe('loadOrCreateState', () => {
 
   it('falls back to creating new state when loading fails', async () => {
     mockExistsSync.mockReturnValue(true);
-    mockLock.mockRejectedValue(new Error('Lock failed'));
+    // First lock call (loading existing state) fails; subsequent calls (sentinel + writeState) succeed
+    mockLock.mockRejectedValueOnce(new Error('Lock failed'));
     mockReaddirSync.mockReturnValue([]);
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 

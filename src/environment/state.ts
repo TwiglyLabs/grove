@@ -8,6 +8,8 @@ import type { EnvironmentState, ProcessInfo } from './types.js';
 
 const STATE_DIR_NAME = '.grove';
 const PORT_START = 10000;
+const LOCK_OPTIONS = { retries: { retries: 60, minTimeout: 10, maxTimeout: 100, randomize: true } };
+const LOCK_OPTIONS_SYNC = { stale: 10000 };
 
 function getStateDir(config: GroveConfig): string {
   const stateDir = join(config.repoRoot, STATE_DIR_NAME);
@@ -103,7 +105,7 @@ export function releasePortBlock(config: GroveConfig, worktreeId: string): void 
   const stateFile = getStateFilePath(config, worktreeId);
   if (existsSync(stateFile)) {
     try {
-      const release = lockfile.lockSync(stateFile);
+      const release = lockfile.lockSync(stateFile, LOCK_OPTIONS_SYNC);
       try {
         unlinkSync(stateFile);
       } finally {
@@ -143,7 +145,7 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
   // Try to load existing state
   if (existsSync(stateFile)) {
     try {
-      const release = await lockfile.lock(stateFile);
+      const release = await lockfile.lock(stateFile, LOCK_OPTIONS);
       try {
         const content = readFileSync(stateFile, 'utf-8');
         const state: EnvironmentState = JSON.parse(content);
@@ -156,39 +158,67 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
     }
   }
 
-  // Create new state
-  const ports = allocatePortBlock(config);
-  const urls: Record<string, string> = {};
-
-  // Generate URLs for services with ports
-  for (const service of config.services) {
-    if (!service.portForward) continue;
-    const port = ports[service.name];
-    const protocol = service.health?.protocol === 'tcp' ? 'tcp' : 'http';
-    urls[service.name] = `${protocol}://127.0.0.1:${port}`;
+  // Serialize port allocation with a sentinel lock to prevent races
+  // between concurrent callers that both see no state file.
+  const stateDir = getStateDir(config);
+  const sentinelPath = join(stateDir, '.port-lock');
+  try {
+    writeFileSync(sentinelPath, '', { flag: 'wx' });
+  } catch {
+    // Already exists — expected
   }
 
-  // Generate URLs for frontends
-  if (config.frontends) {
-    for (const frontend of config.frontends) {
-      const port = ports[frontend.name];
-      urls[frontend.name] = `http://127.0.0.1:${port}`;
+  const releaseSentinel = await lockfile.lock(sentinelPath, LOCK_OPTIONS);
+  try {
+    // Double-check: another caller may have created the state while we waited
+    if (existsSync(stateFile)) {
+      try {
+        const content = readFileSync(stateFile, 'utf-8');
+        return JSON.parse(content) as EnvironmentState;
+      } catch {
+        // Fall through to create new
+      }
     }
+
+    // Create new state
+    const ports = allocatePortBlock(config);
+    const urls: Record<string, string> = {};
+
+    // Generate URLs for services with ports
+    for (const service of config.services) {
+      if (!service.portForward) continue;
+      const port = ports[service.name];
+      const protocol = service.health?.protocol === 'tcp' ? 'tcp' : 'http';
+      urls[service.name] = `${protocol}://127.0.0.1:${port}`;
+    }
+
+    // Generate URLs for frontends
+    if (config.frontends) {
+      for (const frontend of config.frontends) {
+        const port = ports[frontend.name];
+        urls[frontend.name] = `http://127.0.0.1:${port}`;
+      }
+    }
+
+    const namespace = `${config.project.name}-${worktreeId}`;
+
+    const state: EnvironmentState = {
+      namespace,
+      branch,
+      worktreeId,
+      ports,
+      urls,
+      processes: {},
+      lastEnsure: new Date().toISOString(),
+    };
+
+    // Write state before returning to close the race window
+    await writeState(state, config);
+
+    return state;
+  } finally {
+    await releaseSentinel();
   }
-
-  const namespace = `${config.project.name}-${worktreeId}`;
-
-  const state: EnvironmentState = {
-    namespace,
-    branch,
-    worktreeId,
-    ports,
-    urls,
-    processes: {},
-    lastEnsure: new Date().toISOString(),
-  };
-
-  return state;
 }
 
 export async function writeState(state: EnvironmentState, config: GroveConfig): Promise<void> {
@@ -210,7 +240,7 @@ export async function writeState(state: EnvironmentState, config: GroveConfig): 
   state.lastEnsure = new Date().toISOString();
 
   try {
-    const release = await lockfile.lock(stateFile);
+    const release = await lockfile.lock(stateFile, LOCK_OPTIONS);
     try {
       writeFileSync(stateFile, JSON.stringify(state, null, 2), 'utf-8');
     } finally {

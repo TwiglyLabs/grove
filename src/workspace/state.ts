@@ -4,6 +4,9 @@ import { homedir } from 'os';
 import * as lockfile from 'proper-lockfile';
 import { WorkspaceState } from './types.js';
 
+const LOCK_OPTIONS = { retries: { retries: 60, minTimeout: 10, maxTimeout: 100, randomize: true } };
+const LOCK_OPTIONS_SYNC = { stale: 10000 };
+
 export function getStateDir(): string {
   return process.env.GROVE_STATE_DIR || join(homedir(), '.grove', 'workspaces');
 }
@@ -44,7 +47,7 @@ export async function writeWorkspaceState(state: WorkspaceState): Promise<void> 
     // File already exists — expected
   }
 
-  const release = await lockfile.lock(filePath);
+  const release = await lockfile.lock(filePath, LOCK_OPTIONS);
   try {
     writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf-8');
   } finally {
@@ -57,7 +60,7 @@ export function deleteWorkspaceState(id: string): void {
   if (!existsSync(filePath)) return;
 
   try {
-    const release = lockfile.lockSync(filePath);
+    const release = lockfile.lockSync(filePath, LOCK_OPTIONS_SYNC);
     try {
       unlinkSync(filePath);
     } finally {

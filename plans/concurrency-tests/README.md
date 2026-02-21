@@ -1,6 +1,6 @@
 ---
 title: Concurrency Tests
-status: not_started
+status: done
 description: >-
   Test parallel workspace creation, port allocation races, state file
   contention, and partial failure recovery
@@ -10,6 +10,8 @@ depends_on:
 tags:
   - chunked
 not_started_at: '2026-02-21T02:02:31.318Z'
+started_at: '2026-02-21T03:35:47.478Z'
+completed_at: '2026-02-21T03:38:46.167Z'
 ---
 
 ## Problem

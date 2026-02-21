@@ -5,6 +5,8 @@ import * as lockfile from 'proper-lockfile';
 import { RepoRegistry, type RepoEntryOnDisk } from './types.js';
 import { createRepoId } from '../shared/identity.js';
 
+const LOCK_OPTIONS = { retries: { retries: 60, minTimeout: 10, maxTimeout: 100, randomize: true } };
+
 export function getRegistryDir(): string {
   return process.env.GROVE_REGISTRY_DIR || join(homedir(), '.grove');
 }
@@ -38,7 +40,7 @@ function readRegistryFromDisk(): RepoRegistry {
   }
 }
 
-async function writeRegistry(registry: RepoRegistry): Promise<void> {
+async function withRegistryLock<T>(fn: () => T | Promise<T>): Promise<T> {
   const filePath = registryFilePath();
   ensureRegistryDir();
 
@@ -49,9 +51,9 @@ async function writeRegistry(registry: RepoRegistry): Promise<void> {
     // File already exists — expected
   }
 
-  const release = await lockfile.lock(filePath);
+  const release = await lockfile.lock(filePath, LOCK_OPTIONS);
   try {
-    writeFileSync(filePath, JSON.stringify(registry, null, 2), 'utf-8');
+    return await fn();
   } finally {
     await release();
   }
@@ -70,17 +72,17 @@ export async function readRegistry(): Promise<RepoRegistry> {
   const needsMigration = registry.repos.some(entry => !entry.id);
   if (!needsMigration) return registry;
 
-  // Backfill IDs
-  for (const entry of registry.repos) {
-    if (!entry.id) {
-      entry.id = createRepoId();
+  // Backfill IDs under lock to avoid overwriting concurrent changes
+  return withRegistryLock(() => {
+    const fresh = readRegistryFromDisk();
+    for (const entry of fresh.repos) {
+      if (!entry.id) {
+        entry.id = createRepoId();
+      }
     }
-  }
-
-  // Write back atomically
-  await writeRegistry(registry);
-
-  return registry;
+    writeFileSync(registryFilePath(), JSON.stringify(fresh, null, 2), 'utf-8');
+    return fresh;
+  });
 }
 
 export interface AddResult {
@@ -90,43 +92,61 @@ export interface AddResult {
 }
 
 export async function addRepo(name: string, path: string): Promise<AddResult> {
-  const registry = await readRegistry();
+  return withRegistryLock(() => {
+    const registry = readRegistryFromDisk();
 
-  // Check for duplicate path (no-op)
-  const existingByPath = registry.repos.find(r => r.path === path);
-  if (existingByPath) {
-    return { name: existingByPath.name, path: existingByPath.path, alreadyRegistered: true };
-  }
+    // Backfill IDs if needed
+    for (const entry of registry.repos) {
+      if (!entry.id) {
+        entry.id = createRepoId();
+      }
+    }
 
-  // Check for name collision (different path, same name)
-  const existingByName = registry.repos.find(r => r.name === name);
-  if (existingByName) {
-    throw new Error(
-      `Name '${name}' is already registered for a different path: ${existingByName.path}`,
-    );
-  }
+    // Check for duplicate path (no-op)
+    const existingByPath = registry.repos.find(r => r.path === path);
+    if (existingByPath) {
+      return { name: existingByPath.name, path: existingByPath.path, alreadyRegistered: true };
+    }
 
-  const entry: RepoEntryOnDisk = {
-    id: createRepoId(),
-    name,
-    path,
-    addedAt: new Date().toISOString(),
-  };
+    // Check for name collision (different path, same name)
+    const existingByName = registry.repos.find(r => r.name === name);
+    if (existingByName) {
+      throw new Error(
+        `Name '${name}' is already registered for a different path: ${existingByName.path}`,
+      );
+    }
 
-  registry.repos.push(entry);
-  await writeRegistry(registry);
+    const entry: RepoEntryOnDisk = {
+      id: createRepoId(),
+      name,
+      path,
+      addedAt: new Date().toISOString(),
+    };
 
-  return { name, path, alreadyRegistered: false };
+    registry.repos.push(entry);
+    writeFileSync(registryFilePath(), JSON.stringify(registry, null, 2), 'utf-8');
+
+    return { name, path, alreadyRegistered: false };
+  });
 }
 
 export async function removeRepo(name: string): Promise<void> {
-  const registry = await readRegistry();
+  return withRegistryLock(() => {
+    const registry = readRegistryFromDisk();
 
-  const idx = registry.repos.findIndex(r => r.name === name);
-  if (idx === -1) {
-    throw new Error(`No repo registered with name '${name}'`);
-  }
+    // Backfill IDs if needed
+    for (const entry of registry.repos) {
+      if (!entry.id) {
+        entry.id = createRepoId();
+      }
+    }
 
-  registry.repos.splice(idx, 1);
-  await writeRegistry(registry);
+    const idx = registry.repos.findIndex(r => r.name === name);
+    if (idx === -1) {
+      throw new Error(`No repo registered with name '${name}'`);
+    }
+
+    registry.repos.splice(idx, 1);
+    writeFileSync(registryFilePath(), JSON.stringify(registry, null, 2), 'utf-8');
+  });
 }
