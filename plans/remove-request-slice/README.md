@@ -1,12 +1,14 @@
 ---
 title: Remove Request Slice
-status: not_started
+status: done
 description: >-
   Remove src/request/ slice superseded by trellis — delete code, config schema,
   CLI commands, and lib re-exports
 tags:
   - cleanup
 not_started_at: '2026-02-21T02:02:28.876Z'
+started_at: '2026-02-21T02:04:47.534Z'
+completed_at: '2026-02-21T02:11:13.159Z'
 ---
 
 ## Problem
