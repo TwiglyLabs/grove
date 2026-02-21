@@ -1,16 +1,19 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import * as lockfile from 'proper-lockfile';
 import type { GroveConfig } from '../config.js';
 import { sanitizeBranchName } from '../workspace/sanitize.js';
 import type { EnvironmentState, ProcessInfo } from './types.js';
-import { StateWriteFailedError } from '../shared/errors.js';
+import { PortRangeExhaustedError, StateWriteFailedError } from '../shared/errors.js';
 
 const STATE_DIR_NAME = '.grove';
 const PORT_START = 10000;
 const LOCK_OPTIONS = { retries: { retries: 60, minTimeout: 10, maxTimeout: 100, randomize: true } };
 const LOCK_OPTIONS_SYNC = { stale: 10000 };
+const LOCK_SYNC_RETRIES = 10;
+const LOCK_SYNC_RETRY_DELAY_MS = 50;
+const TMP_STALENESS_MS = 60_000; // .tmp files older than 60s are considered stale
 
 function getStateDir(config: GroveConfig): string {
   const stateDir = join(config.repoRoot, STATE_DIR_NAME);
@@ -49,8 +52,8 @@ function getAllUsedPorts(config: GroveConfig): Set<number> {
         const content = readFileSync(join(stateDir, file), 'utf-8');
         const state: EnvironmentState = JSON.parse(content);
         Object.values(state.ports).forEach(port => usedPorts.add(port));
-      } catch {
-        // Skip invalid state files
+      } catch (error) {
+        console.warn(`Skipping corrupt state file ${file}: ${error}`);
       }
     }
   } catch {
@@ -60,13 +63,16 @@ function getAllUsedPorts(config: GroveConfig): Set<number> {
   return usedPorts;
 }
 
-export function allocatePortBlock(config: GroveConfig): Record<string, number> {
+function allocatePortBlock(config: GroveConfig): Record<string, number> {
   const usedPorts = getAllUsedPorts(config);
   const blockSize = config.portBlockSize;
 
   // Find first available block
   let startPort = PORT_START;
   while (true) {
+    if (startPort + blockSize > 65536) {
+      throw new PortRangeExhaustedError();
+    }
     let blockAvailable = true;
     for (let i = 0; i < blockSize; i++) {
       if (usedPorts.has(startPort + i)) {
@@ -104,7 +110,10 @@ export function allocatePortBlock(config: GroveConfig): Record<string, number> {
 
 export function releasePortBlock(config: GroveConfig, worktreeId: string): void {
   const stateFile = getStateFilePath(config, worktreeId);
-  if (existsSync(stateFile)) {
+  if (!existsSync(stateFile)) return;
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= LOCK_SYNC_RETRIES; attempt++) {
     try {
       const release = lockfile.lockSync(stateFile, LOCK_OPTIONS_SYNC);
       try {
@@ -112,10 +121,19 @@ export function releasePortBlock(config: GroveConfig, worktreeId: string): void 
       } finally {
         release();
       }
+      return; // success
     } catch (error) {
-      console.warn(`Failed to release port block: ${error}`);
+      lastError = error;
+      if (attempt < LOCK_SYNC_RETRIES) {
+        // Busy-wait before retrying (sync context — no async sleep available)
+        const start = Date.now();
+        while (Date.now() - start < LOCK_SYNC_RETRY_DELAY_MS) {
+          // spin
+        }
+      }
     }
   }
+  console.warn(`Failed to release port block for ${worktreeId} after ${LOCK_SYNC_RETRIES} retries: ${lastError}. Run \`grove prune\` to clean up stale allocations.`);
 }
 
 /**
@@ -127,8 +145,8 @@ export function validateState(obj: unknown): obj is EnvironmentState {
   return (
     typeof record.namespace === 'string' &&
     typeof record.worktreeId === 'string' &&
-    typeof record.ports === 'object' && record.ports !== null &&
-    typeof record.processes === 'object' && record.processes !== null
+    typeof record.ports === 'object' && record.ports !== null && !Array.isArray(record.ports) &&
+    typeof record.processes === 'object' && record.processes !== null && !Array.isArray(record.processes)
   );
 }
 
@@ -157,22 +175,28 @@ export function readState(config: GroveConfig, worktreeId?: string): Environment
     }
   }
 
-  // Try .tmp recovery
+  // Try .tmp recovery — only if .tmp is fresh (written within TMP_STALENESS_MS)
   if (existsSync(tmpFile)) {
     try {
-      const content = readFileSync(tmpFile, 'utf-8');
-      const parsed = JSON.parse(content);
-      if (validateState(parsed)) {
-        // Promote .tmp to main
-        try {
-          renameSync(tmpFile, stateFile);
-        } catch {
-          // If rename fails, still return the valid state
+      const tmpAge = Date.now() - statSync(tmpFile).mtimeMs;
+      if (tmpAge > TMP_STALENESS_MS) {
+        // Stale .tmp from a previous crash — discard it
+        try { unlinkSync(tmpFile); } catch { /* best-effort cleanup */ }
+      } else {
+        const content = readFileSync(tmpFile, 'utf-8');
+        const parsed = JSON.parse(content);
+        if (validateState(parsed)) {
+          // Promote fresh .tmp to main
+          try {
+            renameSync(tmpFile, stateFile);
+          } catch {
+            // If rename fails, still return the valid state
+          }
+          return parsed;
         }
-        return parsed;
       }
     } catch {
-      // .tmp also corrupt
+      // .tmp stat/read failure — ignore
     }
   }
 
@@ -190,12 +214,32 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
       const release = await lockfile.lock(stateFile, LOCK_OPTIONS);
       try {
         const content = readFileSync(stateFile, 'utf-8');
-        const state: EnvironmentState = JSON.parse(content);
-        return state;
+        const parsed = JSON.parse(content);
+        if (validateState(parsed)) {
+          return parsed;
+        }
+        // Invalid structure — fall through to create new
       } finally {
         await release();
       }
     } catch (error) {
+      // Lock or parse failure — try .tmp recovery before falling through
+      const tmpFile = stateFile + '.tmp';
+      if (existsSync(tmpFile)) {
+        try {
+          const tmpAge = Date.now() - statSync(tmpFile).mtimeMs;
+          if (tmpAge <= TMP_STALENESS_MS) {
+            const tmpContent = readFileSync(tmpFile, 'utf-8');
+            const tmpParsed = JSON.parse(tmpContent);
+            if (validateState(tmpParsed)) {
+              try { renameSync(tmpFile, stateFile); } catch { /* best-effort */ }
+              return tmpParsed;
+            }
+          }
+        } catch {
+          // .tmp recovery failed — fall through to fresh allocation
+        }
+      }
       console.warn(`Failed to load state, creating new: ${error}`);
     }
   }
@@ -216,7 +260,11 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
     if (existsSync(stateFile)) {
       try {
         const content = readFileSync(stateFile, 'utf-8');
-        return JSON.parse(content) as EnvironmentState;
+        const parsed = JSON.parse(content);
+        if (validateState(parsed)) {
+          return parsed;
+        }
+        // Invalid structure (e.g. '{}' from crashed bootstrap) — fall through to create new
       } catch {
         // Fall through to create new
       }
@@ -289,6 +337,10 @@ export async function writeState(state: EnvironmentState, config: GroveConfig): 
       // renameSync is atomic on POSIX when source/target are on same filesystem.
       writeFileSync(tmpFile, JSON.stringify(state, null, 2), 'utf-8');
       renameSync(tmpFile, stateFile);
+      // Cleanup guard: ensure no stale .tmp survives for readState to find later.
+      // After rename, tmpFile should not exist (rename moves it), but guard against
+      // filesystem quirks or copy-on-write semantics.
+      try { unlinkSync(tmpFile); } catch { /* already gone — expected */ }
     } finally {
       await release();
     }

@@ -130,6 +130,55 @@ services:
       expect(result.notRunning).toEqual([]);
     });
 
+    it('logs warning when writeState fails', async () => {
+      const yaml = `
+project:
+  name: test-project
+  cluster: test-cluster
+helm:
+  chart: ./chart
+  release: test
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+`;
+      const repoPath = createRepoDir('env-down-write-fail', yaml);
+      const entry = await add(repoPath);
+
+      // Write state with a dead process PID
+      const stateDir = join(repoPath, '.grove');
+      mkdirSync(stateDir, { recursive: true });
+      const worktreeId = getWorktreeId();
+      const state = {
+        namespace: `test-project-${worktreeId}`,
+        branch: worktreeId,
+        worktreeId,
+        ports: {},
+        urls: {},
+        processes: { 'port-forward-api': { pid: 999999, startedAt: new Date().toISOString() } },
+        lastEnsure: new Date().toISOString(),
+      };
+      writeFileSync(join(stateDir, `${worktreeId}.json`), JSON.stringify(state), 'utf-8');
+
+      // Create a directory where the .tmp file would be written.
+      // This causes EISDIR when writeState tries writeFileSync to the .tmp path,
+      // without interfering with lock acquisition.
+      const tmpPath = join(stateDir, `${worktreeId}.json.tmp`);
+      mkdirSync(tmpPath, { recursive: true });
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const result = await down(entry.id);
+        expect(result.notRunning).toContain('port-forward-api');
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('could not save state after stop'),
+        );
+      } finally {
+        rmSync(tmpPath, { recursive: true, force: true });
+        consoleWarnSpy.mockRestore();
+      }
+    });
+
     it('reports not-running processes', async () => {
       const yaml = `
 project:

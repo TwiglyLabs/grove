@@ -172,8 +172,8 @@ export async function down(
   // Write cleaned state
   try {
     await writeState(state, config);
-  } catch {
-    // Best-effort state cleanup
+  } catch (error) {
+    console.warn(`Warning: could not save state after stop — run \`grove prune\` to clean up. ${error}`);
   }
 
   return { stopped, notRunning };

@@ -1,6 +1,6 @@
 ---
 title: State File Integrity
-status: not_started
+status: done
 description: >-
   Fix state file corruption vectors — port allocation races, validation gaps,
   stale .tmp promotion, lock contention, swallowed write errors
@@ -10,6 +10,8 @@ tags:
   - 'epic:reliability-hardening'
 type: bugfix
 not_started_at: '2026-02-21T20:29:10.368Z'
+started_at: '2026-02-21T21:26:00.482Z'
+completed_at: '2026-02-21T21:33:03.742Z'
 ---
 
 ## Problem

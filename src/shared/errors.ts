@@ -156,6 +156,12 @@ export class NamespaceDeletionFailedError extends GroveError {
 
 // --- State ---
 
+export class PortRangeExhaustedError extends GroveError {
+  constructor() {
+    super('PORT_RANGE_EXHAUSTED', 'No available port block below 65535. Run `grove prune` to free stale port allocations.');
+  }
+}
+
 export class StateWriteFailedError extends GroveError {
   constructor(cause?: unknown) {
     super('STATE_WRITE_FAILED', `Failed to write state${cause ? `: ${cause}` : ''}`);

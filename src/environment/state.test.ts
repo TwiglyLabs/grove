@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { GroveConfig } from '../config.js';
 
-const { mockExecSync, mockReadFileSync, mockWriteFileSync, mockMkdirSync, mockReaddirSync, mockUnlinkSync, mockRenameSync, mockExistsSync, mockLockSync, mockLock, mockRelease } = vi.hoisted(() => ({
+const { mockExecSync, mockReadFileSync, mockWriteFileSync, mockMkdirSync, mockReaddirSync, mockUnlinkSync, mockRenameSync, mockExistsSync, mockStatSync, mockLockSync, mockLock, mockRelease } = vi.hoisted(() => ({
   mockExecSync: vi.fn(),
   mockReadFileSync: vi.fn(),
   mockWriteFileSync: vi.fn(),
@@ -10,6 +10,7 @@ const { mockExecSync, mockReadFileSync, mockWriteFileSync, mockMkdirSync, mockRe
   mockUnlinkSync: vi.fn(),
   mockRenameSync: vi.fn(),
   mockExistsSync: vi.fn(),
+  mockStatSync: vi.fn(),
   mockLockSync: vi.fn(),
   mockLock: vi.fn(),
   mockRelease: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('fs', () => ({
   readdirSync: mockReaddirSync,
   unlinkSync: mockUnlinkSync,
   renameSync: mockRenameSync,
+  statSync: mockStatSync,
 }));
 
 vi.mock('proper-lockfile', () => ({
@@ -38,8 +40,8 @@ vi.mock('proper-lockfile', () => ({
   lock: mockLock,
 }));
 
-import { readState, allocatePortBlock, releasePortBlock, loadOrCreateState, writeState, validateState } from './state.js';
-import { StateWriteFailedError } from '../shared/errors.js';
+import { readState, releasePortBlock, loadOrCreateState, writeState, validateState } from './state.js';
+import { PortRangeExhaustedError, StateWriteFailedError } from '../shared/errors.js';
 
 function makeConfig(overrides: Partial<GroveConfig> = {}): GroveConfig {
   return {
@@ -102,7 +104,7 @@ describe('readState', () => {
     expect(result).toBeNull();
   });
 
-  it('recovers from .tmp when main file is corrupt', () => {
+  it('recovers from fresh .tmp when main file is corrupt', () => {
     const validState = {
       namespace: 'testapp-feature--test-branch',
       branch: 'feature/test-branch',
@@ -114,6 +116,7 @@ describe('readState', () => {
     };
 
     mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 5000 }); // 5 seconds old — fresh
     mockReadFileSync.mockImplementation((path: string) => {
       if (typeof path === 'string' && path.endsWith('.tmp')) {
         return JSON.stringify(validState);
@@ -127,8 +130,22 @@ describe('readState', () => {
     expect(mockRenameSync).toHaveBeenCalled();
   });
 
+  it('does not promote stale .tmp file', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 120_000 }); // 2 minutes old — stale
+    mockReadFileSync.mockReturnValue('corrupt data{{{');
+
+    const result = readState(makeConfig());
+
+    expect(result).toBeNull();
+    expect(mockRenameSync).not.toHaveBeenCalled();
+    // Stale .tmp should be deleted
+    expect(mockUnlinkSync).toHaveBeenCalled();
+  });
+
   it('returns null when both main and .tmp are corrupt', () => {
     mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ mtimeMs: Date.now() }); // fresh but corrupt
     mockReadFileSync.mockReturnValue('corrupt{{{');
 
     const result = readState(makeConfig());
@@ -191,41 +208,60 @@ describe('validateState', () => {
   it('rejects missing processes', () => {
     expect(validateState({ namespace: 'ns', worktreeId: 'wt', ports: {} })).toBe(false);
   });
+
+  it('rejects arrays for ports and processes', () => {
+    expect(validateState({ namespace: 'ns', worktreeId: 'wt', ports: [], processes: [] })).toBe(false);
+  });
+
+  it('rejects null ports', () => {
+    expect(validateState({ namespace: 'ns', worktreeId: 'wt', ports: null, processes: {} })).toBe(false);
+  });
+
+  it('rejects null processes', () => {
+    expect(validateState({ namespace: 'ns', worktreeId: 'wt', ports: {}, processes: null })).toBe(false);
+  });
+
+  it('rejects string ports', () => {
+    expect(validateState({ namespace: 'ns', worktreeId: 'wt', ports: 'string', processes: {} })).toBe(false);
+  });
 });
 
-describe('allocatePortBlock', () => {
+describe('port allocation (via loadOrCreateState)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(true);
+    mockExecSync.mockReturnValue('feature/test-branch');
+    mockRelease.mockResolvedValue(undefined);
+    mockLock.mockResolvedValue(mockRelease);
     mockReaddirSync.mockReturnValue([]);
   });
 
-  it('allocates ports starting at 10000', () => {
-    const config = makeConfig();
-    const ports = allocatePortBlock(config);
+  it('allocates ports starting at 10000', async () => {
+    mockExistsSync.mockReturnValue(false);
+    const result = await loadOrCreateState(makeConfig());
 
-    expect(ports).toEqual({
+    expect(result.ports).toEqual({
       api: 10000,
       webapp: 10001,
     });
   });
 
-  it('skips ports already used by other state files', () => {
-    const config = makeConfig();
+  it('skips ports already used by other state files', async () => {
+    mockExistsSync.mockReturnValue(false);
     mockReaddirSync.mockReturnValue(['other-branch.json']);
     mockReadFileSync.mockReturnValue(JSON.stringify({
       ports: { api: 10000, webapp: 10001, other: 10002 },
     }));
 
-    const ports = allocatePortBlock(config);
+    const result = await loadOrCreateState(makeConfig());
 
-    expect(ports).toEqual({
+    expect(result.ports).toEqual({
       api: 10003,
       webapp: 10004,
     });
   });
 
-  it('returns correct port mapping for services with portForward and frontends', () => {
+  it('returns correct port mapping for services with portForward and frontends', async () => {
+    mockExistsSync.mockReturnValue(false);
     const config = makeConfig({
       services: [
         { name: 'api', portForward: { remotePort: 3001 } },
@@ -236,11 +272,12 @@ describe('allocatePortBlock', () => {
         { name: 'webapp', command: 'npm start', cwd: 'webapp' },
         { name: 'admin', command: 'npm start', cwd: 'admin' },
       ],
+      portBlockSize: 5,
     });
 
-    const ports = allocatePortBlock(config);
+    const result = await loadOrCreateState(config);
 
-    expect(ports).toEqual({
+    expect(result.ports).toEqual({
       api: 10000,
       auth: 10001,
       webapp: 10002,
@@ -248,7 +285,8 @@ describe('allocatePortBlock', () => {
     });
   });
 
-  it('handles config with no frontends', () => {
+  it('handles config with no frontends', async () => {
+    mockExistsSync.mockReturnValue(false);
     const config = makeConfig({
       frontends: undefined,
       services: [
@@ -256,14 +294,15 @@ describe('allocatePortBlock', () => {
       ],
     });
 
-    const ports = allocatePortBlock(config);
+    const result = await loadOrCreateState(config);
 
-    expect(ports).toEqual({
+    expect(result.ports).toEqual({
       api: 10000,
     });
   });
 
-  it('handles config with no services with portForward', () => {
+  it('handles config with no services with portForward', async () => {
+    mockExistsSync.mockReturnValue(false);
     const config = makeConfig({
       services: [
         { name: 'worker' },
@@ -273,11 +312,41 @@ describe('allocatePortBlock', () => {
       ],
     });
 
-    const ports = allocatePortBlock(config);
+    const result = await loadOrCreateState(config);
 
-    expect(ports).toEqual({
+    expect(result.ports).toEqual({
       webapp: 10000,
     });
+  });
+
+  it('throws PortRangeExhaustedError when ports exceed 65535', async () => {
+    mockExistsSync.mockReturnValue(false);
+    // Fill all ports from 10000 to 65535 in blocks of 3
+    const usedPorts: Record<string, number> = {};
+    for (let p = 10000; p <= 65535; p++) {
+      usedPorts[`svc-${p}`] = p;
+    }
+    mockReaddirSync.mockReturnValue(['full.json']);
+    mockReadFileSync.mockReturnValue(JSON.stringify({ ports: usedPorts }));
+
+    await expect(loadOrCreateState(makeConfig())).rejects.toThrow(PortRangeExhaustedError);
+  });
+
+  it('allocates last valid port block at the edge of 65535', async () => {
+    mockExistsSync.mockReturnValue(false);
+    // Fill all ports from 10000 to 65532, leaving 65533-65535 free.
+    // With blockSize=3, block [65533,65534,65535] is the last valid block.
+    const usedPorts: Record<string, number> = {};
+    for (let p = 10000; p <= 65532; p++) {
+      usedPorts[`svc-${p}`] = p;
+    }
+    mockReaddirSync.mockReturnValue(['full.json']);
+    mockReadFileSync.mockReturnValue(JSON.stringify({ ports: usedPorts }));
+
+    const result = await loadOrCreateState(makeConfig());
+
+    expect(result.ports.api).toBe(65533);
+    expect(result.ports.webapp).toBe(65534);
   });
 });
 
@@ -317,9 +386,29 @@ describe('releasePortBlock', () => {
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     expect(() => releasePortBlock(config, 'test-branch')).not.toThrow();
-    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to release port block'));
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to release port block for test-branch'));
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('grove prune'));
 
     consoleWarnSpy.mockRestore();
+  });
+
+  it('succeeds after initial lock contention resolves', () => {
+    mockExistsSync.mockReturnValue(true);
+    let attempts = 0;
+    mockLockSync.mockImplementation(() => {
+      attempts++;
+      if (attempts <= 3) {
+        throw new Error('Lock contention');
+      }
+      return mockRelease;
+    });
+    const config = makeConfig();
+
+    releasePortBlock(config, 'test-branch');
+
+    expect(attempts).toBe(4);
+    expect(mockUnlinkSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json');
+    expect(mockRelease).toHaveBeenCalled();
   });
 });
 
@@ -398,6 +487,26 @@ describe('loadOrCreateState', () => {
     expect(result.urls.webapp).toBe('http://127.0.0.1:10002');
   });
 
+  it('creates new valid state when file contains empty object', async () => {
+    // Simulate: first existsSync (load path) → true, then lock succeeds,
+    // readFileSync returns '{}' (invalid state), so loadOrCreateState falls through.
+    // Then sentinel path: existsSync → false for sentinel 'wx', lock succeeds,
+    // double-check: existsSync for stateFile → true, readFileSync returns '{}' again.
+    // Since '{}' fails validateState, it falls through to create new state.
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue('{}');
+    mockReaddirSync.mockReturnValue([]);
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await loadOrCreateState(makeConfig());
+
+    expect(result.ports).toEqual({ api: 10000, webapp: 10001 });
+    expect(result.namespace).toBeDefined();
+    expect(result.processes).toEqual({});
+
+    consoleWarnSpy.mockRestore();
+  });
+
   it('falls back to creating new state when loading fails', async () => {
     mockExistsSync.mockReturnValue(true);
     // First lock call (loading existing state) fails; subsequent calls (sentinel + writeState) succeed
@@ -409,6 +518,39 @@ describe('loadOrCreateState', () => {
 
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to load state, creating new'));
     expect(result.ports).toBeDefined();
+
+    consoleWarnSpy.mockRestore();
+  });
+
+  it('recovers from fresh .tmp when main file lock fails', async () => {
+    const validState = {
+      namespace: 'testapp-feature--test-branch',
+      branch: 'feature/test-branch',
+      worktreeId: 'feature--test-branch',
+      ports: { api: 10000, webapp: 10001 },
+      urls: {},
+      processes: {},
+      lastEnsure: '2026-02-11T10:00:00Z',
+    };
+
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 5000 }); // 5 seconds old — fresh
+    // First lock call (loading existing state) fails
+    mockLock.mockRejectedValueOnce(new Error('Lock failed'));
+    // .tmp file has valid state; main file read throws (lock failed before read)
+    mockReadFileSync.mockImplementation((path: string) => {
+      if (typeof path === 'string' && path.endsWith('.tmp')) {
+        return JSON.stringify(validState);
+      }
+      throw new Error('should not read main file after lock failure');
+    });
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await loadOrCreateState(makeConfig());
+
+    expect(result).toEqual(validState);
+    // .tmp should have been promoted to main via renameSync
+    expect(mockRenameSync).toHaveBeenCalled();
 
     consoleWarnSpy.mockRestore();
   });
@@ -544,5 +686,33 @@ describe('writeState', () => {
 
     await expect(writeState(state, makeConfig())).rejects.toThrow(StateWriteFailedError);
     expect(mockUnlinkSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json.tmp');
+  });
+});
+
+describe('getAllUsedPorts (via loadOrCreateState)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExecSync.mockReturnValue('feature/test-branch');
+    mockRelease.mockResolvedValue(undefined);
+    mockLock.mockResolvedValue(mockRelease);
+    mockRenameSync.mockReturnValue(undefined);
+  });
+
+  it('logs warning for corrupt JSON state files during port scan', async () => {
+    mockExistsSync.mockReturnValue(false);
+    mockReaddirSync.mockReturnValue(['corrupt.json', 'valid.json']);
+    mockReadFileSync.mockImplementation((path: string) => {
+      if (typeof path === 'string' && path.includes('corrupt.json')) {
+        return 'not valid json{{{';
+      }
+      return JSON.stringify({ ports: { api: 10000 } });
+    });
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await loadOrCreateState(makeConfig());
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping corrupt state file corrupt.json'));
+
+    consoleWarnSpy.mockRestore();
   });
 });
