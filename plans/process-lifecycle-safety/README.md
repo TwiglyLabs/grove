@@ -1,6 +1,6 @@
 ---
 title: Process Lifecycle Safety
-status: not_started
+status: done
 description: >-
   Fix child process spawning, killing, tracking, and cleanup — signal handling,
   supervisor shutdown races, FD leaks, PID validation
@@ -10,6 +10,8 @@ tags:
   - 'epic:reliability-hardening'
 type: bugfix
 not_started_at: '2026-02-21T20:29:09.845Z'
+started_at: '2026-02-21T21:11:53.420Z'
+completed_at: '2026-02-21T21:17:08.911Z'
 ---
 
 ## Problem

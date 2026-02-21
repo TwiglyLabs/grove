@@ -32,18 +32,11 @@ import { FileWatcher } from './watcher.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
 import { createClusterProvider } from './providers/index.js';
 import { Timer } from './timing.js';
+import { registerCleanupHandler, unregisterCleanupHandler } from './signals.js';
+import { isProcessRunning, isGroveProcess } from './process-check.js';
 
 /** Module-level supervisor reference for lifecycle management. */
 let activeSupervisor: SupervisorHandle | null = null;
-
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -107,10 +100,16 @@ export async function up(
     all: options?.all,
   });
 
-  // Track supervisor for lifecycle management
+  // Track supervisor for lifecycle management — stop old one first to prevent leaks
   if (supervisor) {
+    if (activeSupervisor) {
+      await activeSupervisor.stop();
+    }
     activeSupervisor = supervisor;
   }
+
+  // Register signal handlers for clean shutdown on SIGINT/SIGTERM
+  registerCleanupHandler(down, repo);
 
   return {
     state,
@@ -131,6 +130,9 @@ export async function down(
   _options?: { signal?: AbortSignal },
   _events?: EnvironmentEvents,
 ): Promise<DownResult> {
+  // Unregister signal handlers to prevent re-entrant down() calls
+  unregisterCleanupHandler();
+
   const config = await loadConfig(repo);
   const state = internalReadState(config);
 
@@ -138,9 +140,9 @@ export async function down(
     return { stopped: [], notRunning: [] };
   }
 
-  // Stop supervisor before killing processes
+  // Stop supervisor before killing processes — await to drain in-flight checks
   if (activeSupervisor) {
-    activeSupervisor.stop();
+    await activeSupervisor.stop();
     activeSupervisor = null;
   }
 
@@ -148,7 +150,7 @@ export async function down(
   const notRunning: string[] = [];
 
   for (const [name, processInfo] of Object.entries(state.processes)) {
-    if (!isProcessRunning(processInfo.pid)) {
+    if (!isGroveProcess(processInfo.pid)) {
       notRunning.push(name);
       delete state.processes[name];
       continue;
@@ -245,7 +247,7 @@ export async function status(repo: RepoId): Promise<DashboardData | null> {
     .map(s => {
       const processKey = `port-forward-${s.name}`;
       const processInfo = state.processes[processKey];
-      const running = processInfo ? isProcessRunning(processInfo.pid) : false;
+      const running = processInfo ? isGroveProcess(processInfo.pid) : false;
 
       return {
         name: s.name,
@@ -259,7 +261,7 @@ export async function status(repo: RepoId): Promise<DashboardData | null> {
   // Build frontend entries
   const frontends: DashboardData['frontends'] = (config.frontends ?? []).map(f => {
     const processInfo = state.processes[f.name];
-    const running = processInfo ? isProcessRunning(processInfo.pid) : false;
+    const running = processInfo ? isGroveProcess(processInfo.pid) : false;
 
     return {
       name: f.name,

@@ -236,21 +236,73 @@ describe('PortForwardSupervisor', () => {
   });
 
   describe('lifecycle', () => {
-    it('stop() cancels the timer', () => {
+    it('stop() cancels the timer', async () => {
       const supervisor = new PortForwardSupervisor(makeConfig(), makeState(), undefined, instantOptions);
       supervisor.start();
 
       // Should not throw
-      supervisor.stop();
-      supervisor.stop(); // Double-stop is safe
+      await supervisor.stop();
+      await supervisor.stop(); // Double-stop is safe
     });
 
-    it('start() is idempotent', () => {
+    it('start() is idempotent', async () => {
       const supervisor = new PortForwardSupervisor(makeConfig(), makeState(), undefined, instantOptions);
       supervisor.start();
       supervisor.start(); // Should not start a second timer
 
-      supervisor.stop();
+      await supervisor.stop();
+    });
+
+    it('stop() awaits in-flight checkAll', async () => {
+      let resolveHealth!: (value: boolean) => void;
+
+      mockCheckHealth.mockImplementation(() => {
+        return new Promise<boolean>(r => { resolveHealth = r; });
+      });
+
+      const supervisor = new PortForwardSupervisor(makeConfig(), makeState(), undefined, {
+        checkIntervalMs: 10, // Very short interval to trigger quickly
+        maxRecoveryAttempts: 3,
+        backoffMultiplier: 1,
+      });
+      supervisor.register(makeService(), makePfConfig(), makeProcessInfo());
+      supervisor.start();
+
+      // Wait for the interval to fire and checkAll to begin (health check will block)
+      await new Promise(r => setTimeout(r, 50));
+
+      // Now stop — should not resolve until the in-flight checkAll finishes
+      let stopResolved = false;
+      const stopPromise = supervisor.stop().then(() => { stopResolved = true; });
+
+      // Give the event loop a chance — stop should still be waiting
+      await new Promise(r => setTimeout(r, 10));
+      expect(stopResolved).toBe(false);
+
+      // Unblock the health check — checkAll finishes, then stop finishes
+      resolveHealth(true);
+      await stopPromise;
+      expect(stopResolved).toBe(true);
+    });
+
+    it('attemptRecovery bails out after stop()', async () => {
+      mockCheckHealth.mockResolvedValue(false);
+
+      const supervisor = new PortForwardSupervisor(makeConfig(), makeState(), undefined, {
+        ...instantOptions,
+        backoffMultiplier: 0,
+      });
+      supervisor.register(makeService(), makePfConfig(), makeProcessInfo());
+
+      // Simulate stop() having been called (sets stopped=true)
+      await supervisor.stop();
+
+      const results = await supervisor.checkAll();
+
+      // Recovery should not have been attempted since stopped=true
+      expect(mockStopByPid).not.toHaveBeenCalled();
+      expect(mockPfStart).not.toHaveBeenCalled();
+      expect(results[0].recovered).toBe(false);
     });
 
     it('skips already gave-up services', async () => {

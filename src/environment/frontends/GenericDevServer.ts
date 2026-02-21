@@ -38,20 +38,24 @@ export class GenericDevServer {
     const out = openSync(logFile, 'w');
     const err = openSync(logFile, 'a');
 
-    // Use shell: true so the OS handles quoted arguments correctly
-    const child = spawn(this.config.command, {
-      cwd,
-      env,
-      detached: true,
-      stdio: ['ignore', out, err],
-      shell: true,
-    });
+    let child;
+    try {
+      // Use shell: true so the OS handles quoted arguments correctly
+      child = spawn(this.config.command, {
+        cwd,
+        env,
+        detached: true,
+        stdio: ['ignore', out, err],
+        shell: true,
+      });
 
-    child.unref();
-
-    // Close FDs in the parent process — the child has its own copies
-    closeSync(out);
-    closeSync(err);
+      child.unref();
+    } finally {
+      // Close FDs in the parent process — the child has its own copies.
+      // Must close even if spawn() throws to prevent FD leaks.
+      closeSync(out);
+      closeSync(err);
+    }
 
     const pid = child.pid;
     if (pid === undefined) {

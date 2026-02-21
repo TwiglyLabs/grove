@@ -37,6 +37,8 @@ export class PortForwardSupervisor {
   private forwards: Map<string, RegisteredForward> = new Map();
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private stopped = false;
+  private currentCheck: Promise<SupervisorHealthCheckResult[]> | null = null;
   private checkIntervalMs: number;
   private maxRecoveryAttempts: number;
   private backoffMultiplier: number;
@@ -67,15 +69,20 @@ export class PortForwardSupervisor {
     if (this.running) return;
     this.running = true;
     this.timer = setInterval(() => {
-      this.checkAll().catch(() => {});
+      this.currentCheck = this.checkAll().catch(() => []);
     }, this.checkIntervalMs);
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.running = false;
+    this.stopped = true;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+    if (this.currentCheck) {
+      await this.currentCheck;
+      this.currentCheck = null;
     }
   }
 
@@ -126,6 +133,7 @@ export class PortForwardSupervisor {
   }
 
   private async attemptRecovery(forward: RegisteredForward): Promise<boolean> {
+    if (this.stopped) return false;
     forward.recovering = true;
     const attempt = forward.failureCount;
 

@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { openSync, existsSync, mkdirSync } from 'fs';
+import { closeSync, openSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { ProcessInfo } from '../types.js';
 import { checkTcpReady } from '../health.js';
@@ -30,33 +30,46 @@ export class PortForwardProcess {
     const out = openSync(logFile, 'w');
     const err = openSync(logFile, 'a');
 
-    // kubectl port-forward -n <namespace> svc/<service> <localPort>:<remotePort> --address <hostIp>
-    const args = [
-      'port-forward',
-      '-n',
-      namespace,
-      `svc/${serviceName}`,
-      `${localPort}:${remotePort}`,
-      '--address',
-      hostIp,
-    ];
+    let child;
+    try {
+      // kubectl port-forward -n <namespace> svc/<service> <localPort>:<remotePort> --address <hostIp>
+      const args = [
+        'port-forward',
+        '-n',
+        namespace,
+        `svc/${serviceName}`,
+        `${localPort}:${remotePort}`,
+        '--address',
+        hostIp,
+      ];
 
-    const child = spawn('kubectl', args, {
-      detached: true,
-      stdio: ['ignore', out, err],
-    });
+      child = spawn('kubectl', args, {
+        detached: true,
+        stdio: ['ignore', out, err],
+      });
 
-    child.unref();
+      child.unref();
+    } finally {
+      // Close FDs in the parent process — the child has its own copies.
+      // Must close even if spawn() throws to prevent FD leaks.
+      closeSync(out);
+      closeSync(err);
+    }
+
+    const pid = child.pid;
+    if (pid === undefined) {
+      throw new PortForwardFailedError(serviceName, localPort);
+    }
 
     // Verify port is actually bound (15s timeout to accommodate VM-based runtimes like Colima)
     const bound = await checkTcpReady(hostIp, localPort, 15000, 300);
     if (!bound) {
-      try { process.kill(child.pid!, 'SIGTERM'); } catch {}
+      try { process.kill(pid, 'SIGTERM'); } catch {}
       throw new PortForwardFailedError(serviceName, localPort);
     }
 
     return {
-      pid: child.pid!,
+      pid,
       startedAt: new Date().toISOString(),
     };
   }

@@ -54,7 +54,7 @@ export interface UpOptions {
 }
 
 export interface SupervisorHandle {
-  stop(): void;
+  stop(): Promise<void>;
 }
 
 export interface UpResult {
