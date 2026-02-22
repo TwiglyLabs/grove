@@ -73,7 +73,7 @@ describe('logsCommand', () => {
 
   describe('pod logs (--pod)', () => {
     it('warns and returns when no state exists', async () => {
-      vi.mocked(readState).mockReturnValue(null);
+      vi.mocked(readState).mockResolvedValue(null);
 
       await logsCommand(testRepoId, 'api', ['--pod']);
 
@@ -81,7 +81,7 @@ describe('logsCommand', () => {
     });
 
     it('spawns kubectl logs with correct args when state exists', async () => {
-      vi.mocked(readState).mockReturnValue({
+      vi.mocked(readState).mockResolvedValue({
         namespace: 'test-app-main',
         branch: 'main',
         worktreeId: 'main',

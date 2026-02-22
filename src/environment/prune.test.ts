@@ -90,13 +90,13 @@ describe('prune (unified)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLoadConfig.mockResolvedValue(makeConfig());
-    mockFindStoppedProcesses.mockReturnValue([]);
+    mockFindStoppedProcesses.mockResolvedValue([]);
     mockCleanStoppedProcesses.mockResolvedValue(undefined);
-    mockFindDanglingPorts.mockReturnValue([]);
+    mockFindDanglingPorts.mockResolvedValue([]);
     mockCleanDanglingPorts.mockResolvedValue(undefined);
-    mockFindStaleStateFiles.mockReturnValue([]);
-    mockFindOrphanedNamespaces.mockReturnValue([]);
-    mockFindOrphanedWs.mockReturnValue([]);
+    mockFindStaleStateFiles.mockResolvedValue([]);
+    mockFindOrphanedNamespaces.mockResolvedValue([]);
+    mockFindOrphanedWs.mockResolvedValue([]);
   });
 
   it('returns empty results when nothing is orphaned', async () => {
@@ -113,19 +113,19 @@ describe('prune (unified)', () => {
   });
 
   it('returns all categories of detected issues', async () => {
-    mockFindStoppedProcesses.mockReturnValue([
+    mockFindStoppedProcesses.mockResolvedValue([
       { stateFile: 'main.json', processName: 'api', pid: 1234 },
     ]);
-    mockFindDanglingPorts.mockReturnValue([
+    mockFindDanglingPorts.mockResolvedValue([
       { stateFile: 'main.json', portName: 'api', port: 10000 },
     ]);
-    mockFindStaleStateFiles.mockReturnValue([
+    mockFindStaleStateFiles.mockResolvedValue([
       { file: 'old.json', worktreeId: 'old' },
     ]);
-    mockFindOrphanedWs.mockReturnValue([
+    mockFindOrphanedWs.mockResolvedValue([
       { path: '/gone', workspaceId: 'ws-1' },
     ]);
-    mockFindOrphanedNamespaces.mockReturnValue([
+    mockFindOrphanedNamespaces.mockResolvedValue([
       { namespace: 'testapp-old' },
     ]);
 
@@ -139,19 +139,19 @@ describe('prune (unified)', () => {
   });
 
   it('executes cleanup when dryRun is false', async () => {
-    mockFindStoppedProcesses.mockReturnValue([
+    mockFindStoppedProcesses.mockResolvedValue([
       { stateFile: 'main.json', processName: 'api', pid: 1234 },
     ]);
-    mockFindDanglingPorts.mockReturnValue([
+    mockFindDanglingPorts.mockResolvedValue([
       { stateFile: 'main.json', portName: 'api', port: 10000 },
     ]);
-    mockFindStaleStateFiles.mockReturnValue([
+    mockFindStaleStateFiles.mockResolvedValue([
       { file: 'old.json', worktreeId: 'old' },
     ]);
-    mockFindOrphanedWs.mockReturnValue([
+    mockFindOrphanedWs.mockResolvedValue([
       { path: '/gone', workspaceId: 'ws-1' },
     ]);
-    mockFindOrphanedNamespaces.mockReturnValue([
+    mockFindOrphanedNamespaces.mockResolvedValue([
       { namespace: 'testapp-old' },
     ]);
 
@@ -165,19 +165,19 @@ describe('prune (unified)', () => {
   });
 
   it('skips cleanup when dryRun is true', async () => {
-    mockFindStoppedProcesses.mockReturnValue([
+    mockFindStoppedProcesses.mockResolvedValue([
       { stateFile: 'main.json', processName: 'api', pid: 1234 },
     ]);
-    mockFindDanglingPorts.mockReturnValue([
+    mockFindDanglingPorts.mockResolvedValue([
       { stateFile: 'main.json', portName: 'api', port: 10000 },
     ]);
-    mockFindStaleStateFiles.mockReturnValue([
+    mockFindStaleStateFiles.mockResolvedValue([
       { file: 'old.json', worktreeId: 'old' },
     ]);
-    mockFindOrphanedWs.mockReturnValue([
+    mockFindOrphanedWs.mockResolvedValue([
       { path: '/gone', workspaceId: 'ws-1' },
     ]);
-    mockFindOrphanedNamespaces.mockReturnValue([
+    mockFindOrphanedNamespaces.mockResolvedValue([
       { namespace: 'testapp-old' },
     ]);
 
@@ -219,19 +219,19 @@ describe('prune (unified)', () => {
   it('executes cleanup in correct order: processes → ports → state files → worktrees → namespaces', async () => {
     const callOrder: string[] = [];
 
-    mockFindStoppedProcesses.mockReturnValue([
+    mockFindStoppedProcesses.mockResolvedValue([
       { stateFile: 'main.json', processName: 'api', pid: 1234 },
     ]);
-    mockFindDanglingPorts.mockReturnValue([
+    mockFindDanglingPorts.mockResolvedValue([
       { stateFile: 'main.json', portName: 'api', port: 10000 },
     ]);
-    mockFindStaleStateFiles.mockReturnValue([
+    mockFindStaleStateFiles.mockResolvedValue([
       { file: 'old.json', worktreeId: 'old' },
     ]);
-    mockFindOrphanedWs.mockReturnValue([
+    mockFindOrphanedWs.mockResolvedValue([
       { path: '/gone', workspaceId: 'ws-1' },
     ]);
-    mockFindOrphanedNamespaces.mockReturnValue([
+    mockFindOrphanedNamespaces.mockResolvedValue([
       { namespace: 'testapp-old' },
     ]);
 

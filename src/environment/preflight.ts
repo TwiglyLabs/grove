@@ -55,7 +55,7 @@ export async function runPreflightChecks(config: GroveConfig): Promise<Preflight
   // Check port availability if state file exists.
   // Skip ports where our own port-forward processes are still running — those ports
   // are expected to be bound. Only flag ports that are occupied by something else.
-  const state = readState(config);
+  const state = await readState(config);
   if (state !== null) {
     const ownPorts = new Set<number>();
     for (const [processName, processInfo] of Object.entries(state.processes)) {

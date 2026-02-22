@@ -63,7 +63,7 @@ describe('destroy — namespace error handling', () => {
   });
 
   it('succeeds silently when namespace does not exist (not found)', async () => {
-    mockReadState.mockReturnValue({
+    mockReadState.mockResolvedValue({
       namespace: 'test-ns',
       worktreeId: 'main',
       processes: {},
@@ -86,7 +86,7 @@ describe('destroy — namespace error handling', () => {
   });
 
   it('succeeds silently when error message contains "not found"', async () => {
-    mockReadState.mockReturnValue({
+    mockReadState.mockResolvedValue({
       namespace: 'test-ns',
       worktreeId: 'main',
       processes: {},
@@ -108,7 +108,7 @@ describe('destroy — namespace error handling', () => {
   });
 
   it('prints error when namespace deletion fails for non-NotFound reason', async () => {
-    mockReadState.mockReturnValue({
+    mockReadState.mockResolvedValue({
       namespace: 'test-ns',
       worktreeId: 'main',
       processes: {},
@@ -133,7 +133,7 @@ describe('destroy — namespace error handling', () => {
   });
 
   it('includes error details in the printed message', async () => {
-    mockReadState.mockReturnValue({
+    mockReadState.mockResolvedValue({
       namespace: 'test-ns',
       worktreeId: 'main',
       processes: {},

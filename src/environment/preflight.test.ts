@@ -7,7 +7,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 vi.mock('./state.js', () => ({
-  readState: vi.fn(() => null),
+  readState: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock('../shared/output.js', () => ({
@@ -31,7 +31,7 @@ const testConfig = {
 describe('runPreflightChecks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(readState).mockReturnValue(null);
+    vi.mocked(readState).mockResolvedValue(null);
   });
 
   it('passes when all tools are available', async () => {
@@ -193,7 +193,7 @@ describe('runPreflightChecks', () => {
 
   it('skips port checks when no state file exists', async () => {
     mockExecSync.mockReturnValue(Buffer.from(''));
-    vi.mocked(readState).mockReturnValue(null);
+    vi.mocked(readState).mockResolvedValue(null);
 
     const result = await runPreflightChecks(testConfig);
 

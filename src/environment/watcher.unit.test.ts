@@ -74,13 +74,13 @@ vi.mock('./timing.js', () => ({ Timer: class { elapsed() { return 0; } } }));
 vi.mock('./signals.js', () => ({ registerCleanupHandler: vi.fn(), unregisterCleanupHandler: vi.fn() }));
 vi.mock('./process-check.js', () => ({ isProcessRunning: vi.fn(), isGroveProcess: vi.fn() }));
 vi.mock('./prune-checks.js', () => ({
-  findStoppedProcesses: vi.fn(() => []),
-  findDanglingPorts: vi.fn(() => []),
-  findStaleStateFiles: vi.fn(() => []),
-  findOrphanedNamespaces: vi.fn(() => []),
-  cleanStoppedProcesses: vi.fn(),
-  cleanDanglingPorts: vi.fn(),
-  cleanStaleStateFiles: vi.fn(),
+  findStoppedProcesses: vi.fn(() => Promise.resolve([])),
+  findDanglingPorts: vi.fn(() => Promise.resolve([])),
+  findStaleStateFiles: vi.fn(() => Promise.resolve([])),
+  findOrphanedNamespaces: vi.fn(() => Promise.resolve([])),
+  cleanStoppedProcesses: vi.fn(() => Promise.resolve()),
+  cleanDanglingPorts: vi.fn(() => Promise.resolve()),
+  cleanStaleStateFiles: vi.fn(() => Promise.resolve()),
   cleanOrphanedNamespaces: vi.fn(),
 }));
 vi.mock('../workspace/api.js', () => ({
@@ -332,7 +332,7 @@ describe('watch().reload() error handling', () => {
     loadImageFn = vi.fn();
     helmUpgradeFn = vi.fn();
     mockLoadConfig.mockResolvedValue(makeConfig());
-    mockReadState.mockReturnValue(makeState());
+    mockReadState.mockResolvedValue(makeState());
   });
 
   it('routes build failure through onError event', async () => {

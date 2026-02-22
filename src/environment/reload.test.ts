@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before imports
-vi.mock('fs', () => ({
-  writeFileSync: vi.fn(),
+vi.mock('fs/promises', () => ({
+  writeFile: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../shared/config.js', () => ({
@@ -23,7 +23,7 @@ vi.mock('../shared/output.js', () => ({
   printDashboard: vi.fn(),
 }));
 
-import { writeFileSync } from 'fs';
+import { writeFile } from 'fs/promises';
 import { reloadCommand } from './cli.js';
 import { load as loadConfig } from '../shared/config.js';
 import { readState } from './state.js';
@@ -60,7 +60,7 @@ describe('reloadCommand', () => {
     vi.clearAllMocks();
     mockProcessExit();
     vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-    vi.mocked(readState).mockReturnValue(mockState);
+    vi.mocked(readState).mockResolvedValue(mockState);
   });
 
   it('prints error when no service specified', async () => {
@@ -76,7 +76,7 @@ describe('reloadCommand', () => {
   });
 
   it('prints error when environment not running', async () => {
-    vi.mocked(readState).mockReturnValue(null);
+    vi.mocked(readState).mockResolvedValue(null);
 
     await expect(reloadCommand(testRepoId, 'api')).rejects.toThrow(ExitError);
 
@@ -86,7 +86,7 @@ describe('reloadCommand', () => {
   it('writes reload request file for valid service', async () => {
     await reloadCommand(testRepoId, 'api');
 
-    expect(writeFileSync).toHaveBeenCalledWith(
+    expect(writeFile).toHaveBeenCalledWith(
       '/tmp/test-repo/.reload-request',
       'api\n'
     );
@@ -97,11 +97,11 @@ describe('reloadCommand', () => {
       vi.clearAllMocks();
       mockProcessExit();
       vi.mocked(loadConfig).mockResolvedValue(mockConfig);
-      vi.mocked(readState).mockReturnValue(mockState);
+      vi.mocked(readState).mockResolvedValue(mockState);
 
       await reloadCommand(testRepoId, target);
 
-      expect(writeFileSync).toHaveBeenCalledWith(
+      expect(writeFile).toHaveBeenCalledWith(
         '/tmp/test-repo/.reload-request',
         `${target}\n`
       );

@@ -36,7 +36,7 @@ vi.mock('./api.js', async () => {
     status: vi.fn(),
     watch: vi.fn(async (repo: any) => {
       const config = await loadConfig(repo);
-      const state = readState(config);
+      const state = await readState(config);
       if (!state) {
         throw new EnvironmentNotRunningError();
       }
@@ -92,7 +92,7 @@ describe('watchCommand', () => {
   });
 
   it('returns early with warning when readState returns null', async () => {
-    vi.mocked(readState).mockReturnValue(null);
+    vi.mocked(readState).mockResolvedValue(null);
 
     await watchCommand(testRepoId);
 
@@ -104,7 +104,7 @@ describe('watchCommand', () => {
     const config = makeConfig();
     const state = makeState();
     vi.mocked(loadConfig).mockResolvedValue(config);
-    vi.mocked(readState).mockReturnValue(state);
+    vi.mocked(readState).mockResolvedValue(state);
 
     const mockStart = vi.fn();
     const mockStop = vi.fn();
@@ -126,7 +126,7 @@ describe('watchCommand', () => {
 
   it('calls watcher.start()', async () => {
     const state = makeState();
-    vi.mocked(readState).mockReturnValue(state);
+    vi.mocked(readState).mockResolvedValue(state);
 
     const mockStart = vi.fn();
     const mockStop = vi.fn();
@@ -147,7 +147,7 @@ describe('watchCommand', () => {
 
   it('prints info message about stopping', async () => {
     const state = makeState();
-    vi.mocked(readState).mockReturnValue(state);
+    vi.mocked(readState).mockResolvedValue(state);
 
     const mockStart = vi.fn();
     const mockStop = vi.fn();
