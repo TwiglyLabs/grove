@@ -2,42 +2,35 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { GroveConfig } from '../config.js';
 
 const {
-  mockExistsSync,
-  mockReaddirSync,
-  mockReadFileSync,
-  mockWriteFileSync,
-  mockMkdirSync,
-  mockUnlinkSync,
-  mockLockSync,
+  mockAccess,
+  mockReaddir,
+  mockReadFile,
+  mockWriteFile,
+  mockUnlink,
   mockLock,
   mockRelease,
 } = vi.hoisted(() => ({
-  mockExistsSync: vi.fn(),
-  mockReaddirSync: vi.fn(),
-  mockReadFileSync: vi.fn(),
-  mockWriteFileSync: vi.fn(),
-  mockMkdirSync: vi.fn(),
-  mockUnlinkSync: vi.fn(),
-  mockLockSync: vi.fn(),
+  mockAccess: vi.fn(),
+  mockReaddir: vi.fn(),
+  mockReadFile: vi.fn(),
+  mockWriteFile: vi.fn(),
+  mockUnlink: vi.fn(),
   mockLock: vi.fn(),
   mockRelease: vi.fn(),
 }));
 
-vi.mock('fs', () => ({
-  existsSync: mockExistsSync,
-  readdirSync: mockReaddirSync,
-  readFileSync: mockReadFileSync,
-  writeFileSync: mockWriteFileSync,
-  mkdirSync: mockMkdirSync,
-  unlinkSync: mockUnlinkSync,
+vi.mock('fs/promises', () => ({
+  access: mockAccess,
+  readdir: mockReaddir,
+  readFile: mockReadFile,
+  writeFile: mockWriteFile,
+  unlink: mockUnlink,
 }));
 
 vi.mock('proper-lockfile', () => ({
   default: {
-    lockSync: mockLockSync,
     lock: mockLock,
   },
-  lockSync: mockLockSync,
   lock: mockLock,
 }));
 
@@ -81,20 +74,20 @@ function makeConfig(overrides: Partial<GroveConfig> = {}): GroveConfig {
 describe('findStoppedProcesses', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
   });
 
-  it('returns empty array when no state files exist', () => {
-    mockReaddirSync.mockReturnValue([]);
+  it('returns empty array when no state files exist', async () => {
+    mockReaddir.mockResolvedValue([]);
 
-    const result = findStoppedProcesses(makeConfig());
+    const result = await findStoppedProcesses(makeConfig());
 
     expect(result).toEqual([]);
   });
 
-  it('returns empty array when all processes are running', () => {
-    mockReaddirSync.mockReturnValue(['main.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+  it('returns empty array when all processes are running', async () => {
+    mockReaddir.mockResolvedValue(['main.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({
       worktreeId: 'main',
       processes: { 'port-forward-api': { pid: process.pid, startedAt: '2026-01-01T00:00:00Z' } },
       ports: { api: 10000 },
@@ -104,14 +97,14 @@ describe('findStoppedProcesses', () => {
       lastEnsure: '2026-01-01T00:00:00Z',
     }));
 
-    const result = findStoppedProcesses(makeConfig());
+    const result = await findStoppedProcesses(makeConfig());
 
     expect(result).toEqual([]);
   });
 
-  it('detects dead processes', () => {
-    mockReaddirSync.mockReturnValue(['main.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+  it('detects dead processes', async () => {
+    mockReaddir.mockResolvedValue(['main.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({
       worktreeId: 'main',
       processes: { 'port-forward-api': { pid: 999999, startedAt: '2026-01-01T00:00:00Z' } },
       ports: { api: 10000 },
@@ -121,7 +114,7 @@ describe('findStoppedProcesses', () => {
       lastEnsure: '2026-01-01T00:00:00Z',
     }));
 
-    const result = findStoppedProcesses(makeConfig());
+    const result = await findStoppedProcesses(makeConfig());
 
     expect(result).toEqual([{
       stateFile: 'main.json',
@@ -130,17 +123,17 @@ describe('findStoppedProcesses', () => {
     }]);
   });
 
-  it('detects multiple dead processes across state files', () => {
-    mockReaddirSync.mockReturnValue(['branch-a.json', 'branch-b.json']);
-    mockReadFileSync
-      .mockReturnValueOnce(JSON.stringify({
+  it('detects multiple dead processes across state files', async () => {
+    mockReaddir.mockResolvedValue(['branch-a.json', 'branch-b.json']);
+    mockReadFile
+      .mockResolvedValueOnce(JSON.stringify({
         worktreeId: 'branch-a',
         processes: {
           'port-forward-api': { pid: 999998, startedAt: '2026-01-01T00:00:00Z' },
         },
         ports: {}, urls: {}, namespace: 'testapp-branch-a', branch: 'branch-a', lastEnsure: '2026-01-01T00:00:00Z',
       }))
-      .mockReturnValueOnce(JSON.stringify({
+      .mockResolvedValueOnce(JSON.stringify({
         worktreeId: 'branch-b',
         processes: {
           'webapp': { pid: 999997, startedAt: '2026-01-01T00:00:00Z' },
@@ -148,24 +141,24 @@ describe('findStoppedProcesses', () => {
         ports: {}, urls: {}, namespace: 'testapp-branch-b', branch: 'branch-b', lastEnsure: '2026-01-01T00:00:00Z',
       }));
 
-    const result = findStoppedProcesses(makeConfig());
+    const result = await findStoppedProcesses(makeConfig());
 
     expect(result).toHaveLength(2);
     expect(result[0].processName).toBe('port-forward-api');
     expect(result[1].processName).toBe('webapp');
   });
 
-  it('skips invalid state files', () => {
-    mockReaddirSync.mockReturnValue(['bad.json', 'good.json']);
-    mockReadFileSync
-      .mockReturnValueOnce('not json')
-      .mockReturnValueOnce(JSON.stringify({
+  it('skips invalid state files', async () => {
+    mockReaddir.mockResolvedValue(['bad.json', 'good.json']);
+    mockReadFile
+      .mockResolvedValueOnce('not json')
+      .mockResolvedValueOnce(JSON.stringify({
         worktreeId: 'good',
         processes: { 'api': { pid: 999999, startedAt: '2026-01-01T00:00:00Z' } },
         ports: {}, urls: {}, namespace: 'testapp-good', branch: 'good', lastEnsure: '2026-01-01T00:00:00Z',
       }));
 
-    const result = findStoppedProcesses(makeConfig());
+    const result = await findStoppedProcesses(makeConfig());
 
     expect(result).toHaveLength(1);
     expect(result[0].stateFile).toBe('good.json');
@@ -175,7 +168,7 @@ describe('findStoppedProcesses', () => {
 describe('cleanStoppedProcesses', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
     mockRelease.mockResolvedValue(undefined);
     mockLock.mockResolvedValue(mockRelease);
   });
@@ -193,15 +186,16 @@ describe('cleanStoppedProcesses', () => {
       branch: 'main',
       lastEnsure: '2026-01-01T00:00:00Z',
     };
-    mockReaddirSync.mockReturnValue(['main.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify(state));
+    mockReaddir.mockResolvedValue(['main.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify(state));
+    mockWriteFile.mockResolvedValue(undefined);
 
     const entries = [{ stateFile: 'main.json', processName: 'port-forward-api', pid: 999999 }];
 
     await cleanStoppedProcesses(makeConfig(), entries);
 
     // Should have written back the state with the dead process removed
-    const writeCall = mockWriteFileSync.mock.calls.find(
+    const writeCall = mockWriteFile.mock.calls.find(
       (call: unknown[]) => typeof call[1] === 'string' && (call[1] as string).includes('"namespace"'),
     );
     expect(writeCall).toBeDefined();
@@ -219,7 +213,7 @@ describe('cleanStoppedProcesses', () => {
     ];
 
     await expect(cleanStoppedProcesses(makeConfig(), entries)).resolves.toBeUndefined();
-    expect(mockWriteFileSync).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
   });
 
   it('handles entries spanning multiple state files', async () => {
@@ -238,12 +232,13 @@ describe('cleanStoppedProcesses', () => {
       },
       ports: {}, urls: {}, namespace: 'testapp-branch-b', branch: 'branch-b', lastEnsure: '2026-01-01T00:00:00Z',
     };
-    mockReadFileSync
-      .mockImplementation((path: string) => {
-        if (path.includes('branch-a')) return JSON.stringify(stateA);
-        if (path.includes('branch-b')) return JSON.stringify(stateB);
+    mockReadFile
+      .mockImplementation(async (path: string) => {
+        if ((path as string).includes('branch-a')) return JSON.stringify(stateA);
+        if ((path as string).includes('branch-b')) return JSON.stringify(stateB);
         return '{}';
       });
+    mockWriteFile.mockResolvedValue(undefined);
 
     const entries = [
       { stateFile: 'branch-a.json', processName: 'port-forward-api', pid: 999999 },
@@ -255,10 +250,10 @@ describe('cleanStoppedProcesses', () => {
 
     // Should have locked and written both files
     expect(mockLock).toHaveBeenCalledTimes(2);
-    expect(mockWriteFileSync).toHaveBeenCalledTimes(2);
+    expect(mockWriteFile).toHaveBeenCalledTimes(2);
 
     // Verify file A had both processes removed
-    const writeCallA = mockWriteFileSync.mock.calls.find(
+    const writeCallA = mockWriteFile.mock.calls.find(
       (call: unknown[]) => (call[0] as string).includes('branch-a'),
     );
     expect(writeCallA).toBeDefined();
@@ -266,7 +261,7 @@ describe('cleanStoppedProcesses', () => {
     expect(writtenA.processes).toEqual({});
 
     // Verify file B had its process removed
-    const writeCallB = mockWriteFileSync.mock.calls.find(
+    const writeCallB = mockWriteFile.mock.calls.find(
       (call: unknown[]) => (call[0] as string).includes('branch-b'),
     );
     expect(writeCallB).toBeDefined();
@@ -280,20 +275,20 @@ describe('cleanStoppedProcesses', () => {
 describe('findDanglingPorts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
   });
 
-  it('returns empty array when no state files exist', () => {
-    mockReaddirSync.mockReturnValue([]);
+  it('returns empty array when no state files exist', async () => {
+    mockReaddir.mockResolvedValue([]);
 
-    const result = findDanglingPorts(makeConfig());
+    const result = await findDanglingPorts(makeConfig());
 
     expect(result).toEqual([]);
   });
 
-  it('detects ports with no running process', () => {
-    mockReaddirSync.mockReturnValue(['main.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+  it('detects ports with no running process', async () => {
+    mockReaddir.mockResolvedValue(['main.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({
       worktreeId: 'main',
       processes: {},
       ports: { api: 10000, webapp: 10001 },
@@ -303,16 +298,16 @@ describe('findDanglingPorts', () => {
       lastEnsure: '2026-01-01T00:00:00Z',
     }));
 
-    const result = findDanglingPorts(makeConfig());
+    const result = await findDanglingPorts(makeConfig());
 
     expect(result).toHaveLength(2);
     expect(result.map(e => e.portName)).toContain('api');
     expect(result.map(e => e.portName)).toContain('webapp');
   });
 
-  it('does not flag ports that have a running process', () => {
-    mockReaddirSync.mockReturnValue(['main.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+  it('does not flag ports that have a running process', async () => {
+    mockReaddir.mockResolvedValue(['main.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({
       worktreeId: 'main',
       processes: {
         'port-forward-api': { pid: process.pid, startedAt: '2026-01-01T00:00:00Z' },
@@ -325,14 +320,14 @@ describe('findDanglingPorts', () => {
       lastEnsure: '2026-01-01T00:00:00Z',
     }));
 
-    const result = findDanglingPorts(makeConfig());
+    const result = await findDanglingPorts(makeConfig());
 
     expect(result).toEqual([]);
   });
 
-  it('only flags ports whose process is dead, keeps ports with running process', () => {
-    mockReaddirSync.mockReturnValue(['main.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+  it('only flags ports whose process is dead, keeps ports with running process', async () => {
+    mockReaddir.mockResolvedValue(['main.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({
       worktreeId: 'main',
       processes: {
         'port-forward-api': { pid: process.pid, startedAt: '2026-01-01T00:00:00Z' },
@@ -345,7 +340,7 @@ describe('findDanglingPorts', () => {
       lastEnsure: '2026-01-01T00:00:00Z',
     }));
 
-    const result = findDanglingPorts(makeConfig());
+    const result = await findDanglingPorts(makeConfig());
 
     // api has a running process (port-forward-api), so not dangling
     // webapp has a dead process, so its port IS dangling
@@ -361,7 +356,7 @@ describe('findDanglingPorts', () => {
 describe('cleanDanglingPorts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
     mockRelease.mockResolvedValue(undefined);
     mockLock.mockResolvedValue(mockRelease);
   });
@@ -376,8 +371,9 @@ describe('cleanDanglingPorts', () => {
       branch: 'main',
       lastEnsure: '2026-01-01T00:00:00Z',
     };
-    mockReaddirSync.mockReturnValue(['main.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify(state));
+    mockReaddir.mockResolvedValue(['main.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify(state));
+    mockWriteFile.mockResolvedValue(undefined);
 
     const entries = [
       { stateFile: 'main.json', portName: 'api', port: 10000 },
@@ -385,7 +381,7 @@ describe('cleanDanglingPorts', () => {
 
     await cleanDanglingPorts(makeConfig(), entries);
 
-    const writeCall = mockWriteFileSync.mock.calls.find(
+    const writeCall = mockWriteFile.mock.calls.find(
       (call: unknown[]) => typeof call[1] === 'string' && (call[1] as string).includes('"namespace"'),
     );
     expect(writeCall).toBeDefined();
@@ -405,7 +401,7 @@ describe('cleanDanglingPorts', () => {
     ];
 
     await expect(cleanDanglingPorts(makeConfig(), entries)).resolves.toBeUndefined();
-    expect(mockWriteFileSync).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
   });
 });
 
@@ -416,19 +412,19 @@ describe('findStaleStateFiles', () => {
     vi.clearAllMocks();
   });
 
-  it('returns empty array when no state files exist', () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReaddirSync.mockReturnValue([]);
+  it('returns empty array when no state files exist', async () => {
+    mockAccess.mockResolvedValue(undefined);
+    mockReaddir.mockResolvedValue([]);
 
-    const result = findStaleStateFiles(makeConfig());
+    const result = await findStaleStateFiles(makeConfig());
 
     expect(result).toEqual([]);
   });
 
-  it('detects state files whose worktree branch is gone', () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReaddirSync.mockReturnValue(['feature--branch.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+  it('detects state files whose worktree branch is gone', async () => {
+    mockAccess.mockResolvedValue(undefined);
+    mockReaddir.mockResolvedValue(['feature--branch.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({
       worktreeId: 'feature--branch',
       processes: {},
       ports: {},
@@ -440,7 +436,7 @@ describe('findStaleStateFiles', () => {
     // git worktree list returns only main worktree — no feature/branch
     mockExecSync.mockReturnValue('worktree /tmp/test-repo\nbranch refs/heads/main\n\n');
 
-    const result = findStaleStateFiles(makeConfig());
+    const result = await findStaleStateFiles(makeConfig());
 
     expect(result).toEqual([{
       file: 'feature--branch.json',
@@ -448,10 +444,10 @@ describe('findStaleStateFiles', () => {
     }]);
   });
 
-  it('does not flag state files whose worktree exists', () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReaddirSync.mockReturnValue(['main.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+  it('does not flag state files whose worktree exists', async () => {
+    mockAccess.mockResolvedValue(undefined);
+    mockReaddir.mockResolvedValue(['main.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({
       worktreeId: 'main',
       processes: {},
       ports: {},
@@ -463,26 +459,26 @@ describe('findStaleStateFiles', () => {
     // git worktree list includes main
     mockExecSync.mockReturnValue('worktree /tmp/test-repo\nbranch refs/heads/main\n\n');
 
-    const result = findStaleStateFiles(makeConfig());
+    const result = await findStaleStateFiles(makeConfig());
 
     expect(result).toEqual([]);
   });
 
-  it('correctly filters mix of stale and valid state files', () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReaddirSync.mockReturnValue(['main.json', 'feature--old.json', 'feature--active.json']);
-    mockReadFileSync
-      .mockReturnValueOnce(JSON.stringify({
+  it('correctly filters mix of stale and valid state files', async () => {
+    mockAccess.mockResolvedValue(undefined);
+    mockReaddir.mockResolvedValue(['main.json', 'feature--old.json', 'feature--active.json']);
+    mockReadFile
+      .mockResolvedValueOnce(JSON.stringify({
         worktreeId: 'main',
         processes: {}, ports: {}, urls: {},
         namespace: 'testapp-main', branch: 'main', lastEnsure: '2026-01-01T00:00:00Z',
       }))
-      .mockReturnValueOnce(JSON.stringify({
+      .mockResolvedValueOnce(JSON.stringify({
         worktreeId: 'feature--old',
         processes: {}, ports: {}, urls: {},
         namespace: 'testapp-feature--old', branch: 'feature/old', lastEnsure: '2026-01-01T00:00:00Z',
       }))
-      .mockReturnValueOnce(JSON.stringify({
+      .mockResolvedValueOnce(JSON.stringify({
         worktreeId: 'feature--active',
         processes: {}, ports: {}, urls: {},
         namespace: 'testapp-feature--active', branch: 'feature/active', lastEnsure: '2026-01-01T00:00:00Z',
@@ -493,16 +489,16 @@ describe('findStaleStateFiles', () => {
       'worktree /tmp/worktrees/feature-active\nbranch refs/heads/feature/active\n\n',
     );
 
-    const result = findStaleStateFiles(makeConfig());
+    const result = await findStaleStateFiles(makeConfig());
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({ file: 'feature--old.json', worktreeId: 'feature--old' });
   });
 
-  it('does not flag state files when git worktree list fails', () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReaddirSync.mockReturnValue(['main.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+  it('does not flag state files when git worktree list fails', async () => {
+    mockAccess.mockResolvedValue(undefined);
+    mockReaddir.mockResolvedValue(['main.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({
       worktreeId: 'main',
       processes: {},
       ports: {},
@@ -516,7 +512,7 @@ describe('findStaleStateFiles', () => {
       throw new Error('git not found');
     });
 
-    const result = findStaleStateFiles(makeConfig());
+    const result = await findStaleStateFiles(makeConfig());
 
     expect(result).toEqual([]);
   });
@@ -525,18 +521,19 @@ describe('findStaleStateFiles', () => {
 describe('cleanStaleStateFiles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(true);
-    mockRelease.mockReturnValue(undefined);
-    mockLockSync.mockReturnValue(mockRelease);
+    mockAccess.mockResolvedValue(undefined);
+    mockRelease.mockResolvedValue(undefined);
+    mockLock.mockResolvedValue(mockRelease);
+    mockUnlink.mockResolvedValue(undefined);
   });
 
-  it('deletes stale state files with locking', () => {
+  it('deletes stale state files with locking', async () => {
     const entries = [{ file: 'feature--branch.json', worktreeId: 'feature--branch' }];
 
-    cleanStaleStateFiles(makeConfig(), entries);
+    await cleanStaleStateFiles(makeConfig(), entries);
 
-    expect(mockLockSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/feature--branch.json');
-    expect(mockUnlinkSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/feature--branch.json');
+    expect(mockLock).toHaveBeenCalledWith('/tmp/test-repo/.grove/feature--branch.json', expect.any(Object));
+    expect(mockUnlink).toHaveBeenCalledWith('/tmp/test-repo/.grove/feature--branch.json');
     expect(mockRelease).toHaveBeenCalled();
   });
 });
@@ -546,60 +543,60 @@ describe('cleanStaleStateFiles', () => {
 describe('findOrphanedNamespaces', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
   });
 
-  it('returns empty array when no namespaces found', () => {
+  it('returns empty array when no namespaces found', async () => {
     mockExecSync.mockReturnValue('');
 
-    const result = findOrphanedNamespaces(makeConfig());
+    const result = await findOrphanedNamespaces(makeConfig());
 
     expect(result).toEqual([]);
   });
 
-  it('detects namespaces with no state file', () => {
+  it('detects namespaces with no state file', async () => {
     mockExecSync.mockReturnValue('testapp-main testapp-old-branch');
-    mockExistsSync.mockImplementation((path: string) => {
-      if (path.endsWith('.grove')) return true;
-      if (path.endsWith('main.json')) return true;
-      return false;
+    mockAccess.mockImplementation(async (path: string) => {
+      if (path.endsWith('.grove')) return undefined; // exists
+      if (path.endsWith('main.json')) return undefined; // exists
+      throw new Error('ENOENT'); // doesn't exist
     });
 
-    const result = findOrphanedNamespaces(makeConfig());
+    const result = await findOrphanedNamespaces(makeConfig());
 
     expect(result).toEqual([{ namespace: 'testapp-old-branch' }]);
   });
 
-  it('keeps namespaces that have a state file', () => {
+  it('keeps namespaces that have a state file', async () => {
     mockExecSync.mockReturnValue('testapp-main');
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
 
-    const result = findOrphanedNamespaces(makeConfig());
+    const result = await findOrphanedNamespaces(makeConfig());
 
     expect(result).toEqual([]);
   });
 
-  it('ignores namespaces from other projects', () => {
+  it('ignores namespaces from other projects', async () => {
     mockExecSync.mockReturnValue('testapp-main otherprod-feature kube-system testapp-old-branch');
-    mockExistsSync.mockImplementation((path: string) => {
-      if (path.endsWith('.grove')) return true;
-      if (path.endsWith('main.json')) return true;
-      return false;
+    mockAccess.mockImplementation(async (path: string) => {
+      if (path.endsWith('.grove')) return undefined; // exists
+      if (path.endsWith('main.json')) return undefined; // exists
+      throw new Error('ENOENT'); // doesn't exist
     });
 
-    const result = findOrphanedNamespaces(makeConfig());
+    const result = await findOrphanedNamespaces(makeConfig());
 
     // Only testapp-old-branch should be flagged (testapp prefix, no state file)
     // otherprod-feature and kube-system have wrong prefix, testapp-main has a state file
     expect(result).toEqual([{ namespace: 'testapp-old-branch' }]);
   });
 
-  it('handles kubectl failure gracefully', () => {
+  it('handles kubectl failure gracefully', async () => {
     mockExecSync.mockImplementation(() => {
       throw new Error('kubectl not found');
     });
 
-    const result = findOrphanedNamespaces(makeConfig());
+    const result = await findOrphanedNamespaces(makeConfig());
 
     expect(result).toEqual([]);
   });

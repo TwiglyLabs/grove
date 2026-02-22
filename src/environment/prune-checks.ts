@@ -5,7 +5,7 @@
  * The prune orchestrator in api.ts calls find, then optionally clean.
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { readFile, writeFile, access, readdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import * as lockfile from 'proper-lockfile';
@@ -18,20 +18,26 @@ import type {
   OrphanedNamespaceEntry,
 } from './types.js';
 
+const LOCK_OPTIONS = { retries: { retries: 60, minTimeout: 10, maxTimeout: 100, randomize: true } };
+
 function getStateDir(config: GroveConfig): string {
   return join(config.repoRoot, '.grove');
 }
 
-function readStateFiles(config: GroveConfig): Array<{ file: string; state: EnvironmentState }> {
+async function readStateFiles(config: GroveConfig): Promise<Array<{ file: string; state: EnvironmentState }>> {
   const stateDir = getStateDir(config);
-  if (!existsSync(stateDir)) return [];
+  try {
+    await access(stateDir);
+  } catch {
+    return [];
+  }
 
-  const files = readdirSync(stateDir).filter(f => f.endsWith('.json'));
+  const files = (await readdir(stateDir)).filter(f => f.endsWith('.json'));
   const results: Array<{ file: string; state: EnvironmentState }> = [];
 
   for (const file of files) {
     try {
-      const content = readFileSync(join(stateDir, file), 'utf-8');
+      const content = await readFile(join(stateDir, file), 'utf-8');
       const state: EnvironmentState = JSON.parse(content);
       if (state.worktreeId && state.namespace) {
         results.push({ file, state });
@@ -55,8 +61,8 @@ function isProcessRunning(pid: number): boolean {
 
 // --- Stopped Processes ---
 
-export function findStoppedProcesses(config: GroveConfig): StoppedProcessEntry[] {
-  const stateFiles = readStateFiles(config);
+export async function findStoppedProcesses(config: GroveConfig): Promise<StoppedProcessEntry[]> {
+  const stateFiles = await readStateFiles(config);
   const results: StoppedProcessEntry[] = [];
 
   for (const { file, state } of stateFiles) {
@@ -93,14 +99,14 @@ export async function cleanStoppedProcesses(
     try {
       const release = await lockfile.lock(filePath);
       try {
-        const content = readFileSync(filePath, 'utf-8');
+        const content = await readFile(filePath, 'utf-8');
         const state: EnvironmentState = JSON.parse(content);
 
         for (const name of processNames) {
           delete state.processes[name];
         }
 
-        writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf-8');
+        await writeFile(filePath, JSON.stringify(state, null, 2), 'utf-8');
       } finally {
         await release();
       }
@@ -112,8 +118,8 @@ export async function cleanStoppedProcesses(
 
 // --- Dangling Ports ---
 
-export function findDanglingPorts(config: GroveConfig): DanglingPortEntry[] {
-  const stateFiles = readStateFiles(config);
+export async function findDanglingPorts(config: GroveConfig): Promise<DanglingPortEntry[]> {
+  const stateFiles = await readStateFiles(config);
   const results: DanglingPortEntry[] = [];
 
   for (const { file, state } of stateFiles) {
@@ -164,7 +170,7 @@ export async function cleanDanglingPorts(
     try {
       const release = await lockfile.lock(filePath);
       try {
-        const content = readFileSync(filePath, 'utf-8');
+        const content = await readFile(filePath, 'utf-8');
         const state: EnvironmentState = JSON.parse(content);
 
         for (const name of portNames) {
@@ -172,7 +178,7 @@ export async function cleanDanglingPorts(
           delete state.urls[name];
         }
 
-        writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf-8');
+        await writeFile(filePath, JSON.stringify(state, null, 2), 'utf-8');
       } finally {
         await release();
       }
@@ -184,12 +190,12 @@ export async function cleanDanglingPorts(
 
 // --- Stale State Files ---
 
-export function findStaleStateFiles(config: GroveConfig): StaleStateFileEntry[] {
-  const stateFiles = readStateFiles(config);
+export async function findStaleStateFiles(config: GroveConfig): Promise<StaleStateFileEntry[]> {
+  const stateFiles = await readStateFiles(config);
   if (stateFiles.length === 0) return [];
 
   // Gather all valid worktreeIds from active git worktrees
-  const validIds = getActiveWorktreeIds(config);
+  const validIds = getActiveWorktreeIds(config, stateFiles);
 
   const results: StaleStateFileEntry[] = [];
   for (const { file, state } of stateFiles) {
@@ -208,7 +214,7 @@ export function findStaleStateFiles(config: GroveConfig): StaleStateFileEntry[] 
  * Get the set of worktreeIds that correspond to active git worktrees.
  * Parses `git worktree list --porcelain` output for branch lines.
  */
-function getActiveWorktreeIds(config: GroveConfig): Set<string> {
+function getActiveWorktreeIds(config: GroveConfig, stateFiles: Array<{ file: string; state: EnvironmentState }>): Set<string> {
   const ids = new Set<string>();
 
   try {
@@ -228,7 +234,7 @@ function getActiveWorktreeIds(config: GroveConfig): Set<string> {
     // If git fails, return empty set — caller will flag all state files as stale.
     // This is intentionally conservative only when git is completely unavailable.
     // In practice, we want the caller to short-circuit safely.
-    return new Set(readStateFiles(config).map(s => s.state.worktreeId));
+    return new Set(stateFiles.map(s => s.state.worktreeId));
   }
 
   return ids;
@@ -238,28 +244,30 @@ function sanitizeBranch(branch: string): string {
   return branch.replace(/\//g, '--');
 }
 
-export function cleanStaleStateFiles(
+export async function cleanStaleStateFiles(
   config: GroveConfig,
   entries: StaleStateFileEntry[],
-): void {
+): Promise<void> {
   const stateDir = getStateDir(config);
 
   for (const entry of entries) {
     const filePath = join(stateDir, entry.file);
-    if (!existsSync(filePath)) continue;
+    const exists = await access(filePath).then(() => true, () => false);
+    if (!exists) continue;
 
     try {
-      const release = lockfile.lockSync(filePath);
+      const release = await lockfile.lock(filePath, LOCK_OPTIONS);
       try {
-        unlinkSync(filePath);
+        await unlink(filePath);
       } finally {
-        release();
+        await release();
       }
     } catch {
       // Best-effort cleanup — file may already be gone
       try {
-        if (existsSync(filePath)) {
-          unlinkSync(filePath);
+        const stillExists = await access(filePath).then(() => true, () => false);
+        if (stillExists) {
+          await unlink(filePath);
         }
       } catch {
         // Truly gone
@@ -270,7 +278,7 @@ export function cleanStaleStateFiles(
 
 // --- Orphaned Namespaces ---
 
-export function findOrphanedNamespaces(config: GroveConfig): OrphanedNamespaceEntry[] {
+export async function findOrphanedNamespaces(config: GroveConfig): Promise<OrphanedNamespaceEntry[]> {
   const namespacePrefix = config.project.name;
   const stateDir = getStateDir(config);
 
@@ -291,7 +299,8 @@ export function findOrphanedNamespaces(config: GroveConfig): OrphanedNamespaceEn
     const worktreeId = ns.substring(namespacePrefix.length + 1);
     const stateFile = join(stateDir, `${worktreeId}.json`);
 
-    if (!existsSync(stateFile)) {
+    const exists = await access(stateFile).then(() => true, () => false);
+    if (!exists) {
       results.push({ namespace: ns });
     }
   }

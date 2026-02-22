@@ -66,10 +66,7 @@ describe('prune-checks concurrency', () => {
 
       // Concurrently: prune deletes stale, writeState updates active
       await Promise.all([
-        new Promise<void>(resolve => {
-          cleanStaleStateFiles(config, staleEntries);
-          resolve();
-        }),
+        cleanStaleStateFiles(config, staleEntries),
         writeState(makeState('active-branch', { api: 10006, webapp: 10007 }), config),
       ]);
 
@@ -98,10 +95,7 @@ describe('prune-checks concurrency', () => {
       // Race: prune deletes the file, writeState (simulating up()) updates it.
       // Either outcome is valid — the lock serializes the operations.
       await Promise.all([
-        new Promise<void>(resolve => {
-          cleanStaleStateFiles(config, staleEntries);
-          resolve();
-        }),
+        cleanStaleStateFiles(config, staleEntries),
         writeState(makeState('contested', { api: 10003, webapp: 10004 }), config),
       ]);
 
@@ -132,10 +126,7 @@ describe('prune-checks concurrency', () => {
 
       // Concurrently: prune stale files + update active files
       await Promise.all([
-        new Promise<void>(resolve => {
-          cleanStaleStateFiles(config, staleEntries);
-          resolve();
-        }),
+        cleanStaleStateFiles(config, staleEntries),
         ...Array.from({ length: 5 }, (_, i) =>
           writeState(makeState(`active-${i}`, { api: 30000 + i * 3, webapp: 30001 + i * 3 }), config),
         ),
