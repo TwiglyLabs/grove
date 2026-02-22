@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import { access, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import * as lockfile from 'proper-lockfile';
@@ -10,17 +10,16 @@ import { PortRangeExhaustedError, StateWriteFailedError } from '../shared/errors
 const STATE_DIR_NAME = '.grove';
 const PORT_START = 10000;
 const LOCK_OPTIONS = { retries: { retries: 60, minTimeout: 10, maxTimeout: 100, randomize: true } };
-const LOCK_OPTIONS_SYNC = { stale: 10000 };
-const LOCK_SYNC_RETRIES = 10;
-const LOCK_SYNC_RETRY_DELAY_MS = 50;
 const TMP_STALENESS_MS = 60_000; // .tmp files older than 60s are considered stale
 
 function getStateDir(config: GroveConfig): string {
-  const stateDir = join(config.repoRoot, STATE_DIR_NAME);
-  if (!existsSync(stateDir)) {
-    mkdirSync(stateDir, { recursive: true });
-  }
-  return stateDir;
+  return join(config.repoRoot, STATE_DIR_NAME);
+}
+
+async function ensureStateDir(config: GroveConfig): Promise<string> {
+  const dir = getStateDir(config);
+  await mkdir(dir, { recursive: true });
+  return dir;
 }
 
 function getCurrentBranch(): string {
@@ -41,15 +40,15 @@ function getStateFilePath(config: GroveConfig, worktreeId?: string): string {
   return join(getStateDir(config), `${id}.json`);
 }
 
-function getAllUsedPorts(config: GroveConfig): Set<number> {
+async function getAllUsedPorts(config: GroveConfig): Promise<Set<number>> {
   const stateDir = getStateDir(config);
   const usedPorts = new Set<number>();
 
   try {
-    const files = readdirSync(stateDir).filter(f => f.endsWith('.json'));
+    const files = (await readdir(stateDir)).filter(f => f.endsWith('.json'));
     for (const file of files) {
       try {
-        const content = readFileSync(join(stateDir, file), 'utf-8');
+        const content = await readFile(join(stateDir, file), 'utf-8');
         const state: EnvironmentState = JSON.parse(content);
         Object.values(state.ports).forEach(port => usedPorts.add(port));
       } catch (error) {
@@ -63,8 +62,8 @@ function getAllUsedPorts(config: GroveConfig): Set<number> {
   return usedPorts;
 }
 
-function allocatePortBlock(config: GroveConfig): Record<string, number> {
-  const usedPorts = getAllUsedPorts(config);
+async function allocatePortBlock(config: GroveConfig): Promise<Record<string, number>> {
+  const usedPorts = await getAllUsedPorts(config);
   const blockSize = config.portBlockSize;
 
   // Find first available block
@@ -108,32 +107,25 @@ function allocatePortBlock(config: GroveConfig): Record<string, number> {
   return ports;
 }
 
-export function releasePortBlock(config: GroveConfig, worktreeId: string): void {
+export async function releasePortBlock(config: GroveConfig, worktreeId: string): Promise<void> {
   const stateFile = getStateFilePath(config, worktreeId);
-  if (!existsSync(stateFile)) return;
 
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= LOCK_SYNC_RETRIES; attempt++) {
-    try {
-      const release = lockfile.lockSync(stateFile, LOCK_OPTIONS_SYNC);
-      try {
-        unlinkSync(stateFile);
-      } finally {
-        release();
-      }
-      return; // success
-    } catch (error) {
-      lastError = error;
-      if (attempt < LOCK_SYNC_RETRIES) {
-        // Busy-wait before retrying (sync context — no async sleep available)
-        const start = Date.now();
-        while (Date.now() - start < LOCK_SYNC_RETRY_DELAY_MS) {
-          // spin
-        }
-      }
-    }
+  try {
+    await access(stateFile);
+  } catch {
+    return; // File does not exist
   }
-  console.warn(`Failed to release port block for ${worktreeId} after ${LOCK_SYNC_RETRIES} retries: ${lastError}. Run \`grove prune\` to clean up stale allocations.`);
+
+  try {
+    const release = await lockfile.lock(stateFile, LOCK_OPTIONS);
+    try {
+      await unlink(stateFile);
+    } finally {
+      await release();
+    }
+  } catch (error) {
+    console.warn(`Failed to release port block for ${worktreeId} after retries: ${error}. Run \`grove prune\` to clean up stale allocations.`);
+  }
 }
 
 /**
@@ -157,47 +149,45 @@ export function validateState(obj: unknown): obj is EnvironmentState {
  *
  * On parse failure, attempts recovery from .tmp file if one exists.
  */
-export function readState(config: GroveConfig, worktreeId?: string): EnvironmentState | null {
+export async function readState(config: GroveConfig, worktreeId?: string): Promise<EnvironmentState | null> {
   const id = worktreeId ?? getWorktreeId();
   const stateFile = getStateFilePath(config, id);
   const tmpFile = stateFile + '.tmp';
 
   // Try main file first
-  if (existsSync(stateFile)) {
-    try {
-      const content = readFileSync(stateFile, 'utf-8');
-      const parsed = JSON.parse(content);
-      if (validateState(parsed)) {
-        return parsed;
-      }
-    } catch {
-      // Main file corrupt — fall through to .tmp recovery
+  try {
+    const content = await readFile(stateFile, 'utf-8');
+    const parsed = JSON.parse(content);
+    if (validateState(parsed)) {
+      return parsed;
     }
+    // Invalid structure — fall through to .tmp recovery
+  } catch {
+    // Main file missing or corrupt — fall through to .tmp recovery
   }
 
   // Try .tmp recovery — only if .tmp is fresh (written within TMP_STALENESS_MS)
-  if (existsSync(tmpFile)) {
-    try {
-      const tmpAge = Date.now() - statSync(tmpFile).mtimeMs;
-      if (tmpAge > TMP_STALENESS_MS) {
-        // Stale .tmp from a previous crash — discard it
-        try { unlinkSync(tmpFile); } catch { /* best-effort cleanup */ }
-      } else {
-        const content = readFileSync(tmpFile, 'utf-8');
-        const parsed = JSON.parse(content);
-        if (validateState(parsed)) {
-          // Promote fresh .tmp to main
-          try {
-            renameSync(tmpFile, stateFile);
-          } catch {
-            // If rename fails, still return the valid state
-          }
-          return parsed;
+  try {
+    const tmpStat = await stat(tmpFile);
+    const tmpAge = Date.now() - tmpStat.mtimeMs;
+    if (tmpAge > TMP_STALENESS_MS) {
+      // Stale .tmp from a previous crash — discard it
+      try { await unlink(tmpFile); } catch { /* best-effort cleanup */ }
+    } else {
+      const content = await readFile(tmpFile, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (validateState(parsed)) {
+        // Promote fresh .tmp to main
+        try {
+          await rename(tmpFile, stateFile);
+        } catch {
+          // If rename fails, still return the valid state
         }
+        return parsed;
       }
-    } catch {
-      // .tmp stat/read failure — ignore
     }
+  } catch {
+    // .tmp stat/read failure — ignore
   }
 
   return null;
@@ -209,11 +199,12 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
   const branch = getCurrentBranch();
 
   // Try to load existing state
-  if (existsSync(stateFile)) {
+  try {
+    await access(stateFile);
     try {
       const release = await lockfile.lock(stateFile, LOCK_OPTIONS);
       try {
-        const content = readFileSync(stateFile, 'utf-8');
+        const content = await readFile(stateFile, 'utf-8');
         const parsed = JSON.parse(content);
         if (validateState(parsed)) {
           return parsed;
@@ -225,31 +216,37 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
     } catch (error) {
       // Lock or parse failure — try .tmp recovery before falling through
       const tmpFile = stateFile + '.tmp';
-      if (existsSync(tmpFile)) {
+      try {
+        await access(tmpFile);
         try {
-          const tmpAge = Date.now() - statSync(tmpFile).mtimeMs;
+          const tmpStat = await stat(tmpFile);
+          const tmpAge = Date.now() - tmpStat.mtimeMs;
           if (tmpAge <= TMP_STALENESS_MS) {
-            const tmpContent = readFileSync(tmpFile, 'utf-8');
+            const tmpContent = await readFile(tmpFile, 'utf-8');
             const tmpParsed = JSON.parse(tmpContent);
             if (validateState(tmpParsed)) {
-              try { renameSync(tmpFile, stateFile); } catch { /* best-effort */ }
+              try { await rename(tmpFile, stateFile); } catch { /* best-effort */ }
               return tmpParsed;
             }
           }
         } catch {
           // .tmp recovery failed — fall through to fresh allocation
         }
+      } catch {
+        // .tmp does not exist — fall through to fresh allocation
       }
       console.warn(`Failed to load state, creating new: ${error}`);
     }
+  } catch {
+    // State file does not exist — fall through to create new
   }
 
   // Serialize port allocation with a sentinel lock to prevent races
   // between concurrent callers that both see no state file.
-  const stateDir = getStateDir(config);
+  const stateDir = await ensureStateDir(config);
   const sentinelPath = join(stateDir, '.port-lock');
   try {
-    writeFileSync(sentinelPath, '', { flag: 'wx' });
+    await writeFile(sentinelPath, '', { flag: 'wx' });
   } catch {
     // Already exists — expected
   }
@@ -257,9 +254,10 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
   const releaseSentinel = await lockfile.lock(sentinelPath, LOCK_OPTIONS);
   try {
     // Double-check: another caller may have created the state while we waited
-    if (existsSync(stateFile)) {
+    try {
+      await access(stateFile);
       try {
-        const content = readFileSync(stateFile, 'utf-8');
+        const content = await readFile(stateFile, 'utf-8');
         const parsed = JSON.parse(content);
         if (validateState(parsed)) {
           return parsed;
@@ -268,10 +266,12 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
       } catch {
         // Fall through to create new
       }
+    } catch {
+      // State file does not exist — fall through to create new
     }
 
     // Create new state
-    const ports = allocatePortBlock(config);
+    const ports = await allocatePortBlock(config);
     const urls: Record<string, string> = {};
 
     // Generate URLs for services with ports
@@ -314,16 +314,13 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
 export async function writeState(state: EnvironmentState, config: GroveConfig): Promise<void> {
   const stateFile = getStateFilePath(config, state.worktreeId);
   const tmpFile = stateFile + '.tmp';
-  const stateDir = getStateDir(config);
 
-  if (!existsSync(stateDir)) {
-    mkdirSync(stateDir, { recursive: true });
-  }
+  await ensureStateDir(config);
 
   // Ensure state file exists for lockfile (proper-lockfile requires it).
   // Use 'wx' flag for atomic create — no-op if file already exists.
   try {
-    writeFileSync(stateFile, '{}', { flag: 'wx' });
+    await writeFile(stateFile, '{}', { flag: 'wx' });
   } catch {
     // File already exists — expected
   }
@@ -334,20 +331,21 @@ export async function writeState(state: EnvironmentState, config: GroveConfig): 
     const release = await lockfile.lock(stateFile, LOCK_OPTIONS);
     try {
       // Atomic write: write to .tmp, then rename over main file.
-      // renameSync is atomic on POSIX when source/target are on same filesystem.
-      writeFileSync(tmpFile, JSON.stringify(state, null, 2), 'utf-8');
-      renameSync(tmpFile, stateFile);
+      // rename is atomic on POSIX when source/target are on same filesystem.
+      await writeFile(tmpFile, JSON.stringify(state, null, 2), 'utf-8');
+      await rename(tmpFile, stateFile);
       // Cleanup guard: ensure no stale .tmp survives for readState to find later.
       // After rename, tmpFile should not exist (rename moves it), but guard against
       // filesystem quirks or copy-on-write semantics.
-      try { unlinkSync(tmpFile); } catch { /* already gone — expected */ }
+      try { await unlink(tmpFile); } catch { /* already gone — expected */ }
     } finally {
       await release();
     }
   } catch (error) {
     // Clean up temp file on failure
     try {
-      if (existsSync(tmpFile)) unlinkSync(tmpFile);
+      await access(tmpFile);
+      await unlink(tmpFile);
     } catch {
       // Best-effort cleanup
     }

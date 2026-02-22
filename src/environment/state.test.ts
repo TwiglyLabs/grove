@@ -1,17 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { GroveConfig } from '../config.js';
 
-const { mockExecSync, mockReadFileSync, mockWriteFileSync, mockMkdirSync, mockReaddirSync, mockUnlinkSync, mockRenameSync, mockExistsSync, mockStatSync, mockLockSync, mockLock, mockRelease } = vi.hoisted(() => ({
+const { mockExecSync, mockReadFile, mockWriteFile, mockMkdir, mockReaddir, mockUnlink, mockRename, mockAccess, mockStat, mockLock, mockRelease } = vi.hoisted(() => ({
   mockExecSync: vi.fn(),
-  mockReadFileSync: vi.fn(),
-  mockWriteFileSync: vi.fn(),
-  mockMkdirSync: vi.fn(),
-  mockReaddirSync: vi.fn(),
-  mockUnlinkSync: vi.fn(),
-  mockRenameSync: vi.fn(),
-  mockExistsSync: vi.fn(),
-  mockStatSync: vi.fn(),
-  mockLockSync: vi.fn(),
+  mockReadFile: vi.fn(),
+  mockWriteFile: vi.fn(),
+  mockMkdir: vi.fn(),
+  mockReaddir: vi.fn(),
+  mockUnlink: vi.fn(),
+  mockRename: vi.fn(),
+  mockAccess: vi.fn(),
+  mockStat: vi.fn(),
   mockLock: vi.fn(),
   mockRelease: vi.fn(),
 }));
@@ -20,23 +19,21 @@ vi.mock('child_process', () => ({
   execSync: mockExecSync,
 }));
 
-vi.mock('fs', () => ({
-  existsSync: mockExistsSync,
-  readFileSync: mockReadFileSync,
-  writeFileSync: mockWriteFileSync,
-  mkdirSync: mockMkdirSync,
-  readdirSync: mockReaddirSync,
-  unlinkSync: mockUnlinkSync,
-  renameSync: mockRenameSync,
-  statSync: mockStatSync,
+vi.mock('fs/promises', () => ({
+  access: mockAccess,
+  readFile: mockReadFile,
+  writeFile: mockWriteFile,
+  mkdir: mockMkdir,
+  readdir: mockReaddir,
+  unlink: mockUnlink,
+  rename: mockRename,
+  stat: mockStat,
 }));
 
 vi.mock('proper-lockfile', () => ({
   default: {
-    lockSync: mockLockSync,
     lock: mockLock,
   },
-  lockSync: mockLockSync,
   lock: mockLock,
 }));
 
@@ -66,16 +63,15 @@ describe('readState', () => {
     mockExecSync.mockReturnValue('feature/test-branch');
   });
 
-  it('returns null when no state file exists', () => {
-    mockExistsSync.mockReturnValue(false);
+  it('returns null when no state file exists', async () => {
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
 
-    const result = readState(makeConfig());
+    const result = await readState(makeConfig());
 
     expect(result).toBeNull();
   });
 
-  it('returns the parsed state when file exists', () => {
-    mockExistsSync.mockReturnValue(true);
+  it('returns the parsed state when file exists', async () => {
     const state = {
       namespace: 'testapp-feature--test-branch',
       branch: 'feature/test-branch',
@@ -85,26 +81,26 @@ describe('readState', () => {
       processes: {},
       lastEnsure: '2026-02-11T10:00:00Z',
     };
-    mockReadFileSync.mockReturnValue(JSON.stringify(state));
+    mockReadFile.mockResolvedValue(JSON.stringify(state));
 
-    const result = readState(makeConfig());
+    const result = await readState(makeConfig());
 
     expect(result).toEqual(state);
   });
 
-  it('returns null when file contains invalid JSON and no .tmp exists', () => {
-    mockExistsSync.mockImplementation((path: string) => {
-      if (path.endsWith('.tmp')) return false;
-      return true;
+  it('returns null when file contains invalid JSON and no .tmp exists', async () => {
+    mockReadFile.mockImplementation((path: string) => {
+      if (path.endsWith('.tmp')) return Promise.reject(new Error('ENOENT'));
+      return Promise.resolve('invalid json{');
     });
-    mockReadFileSync.mockReturnValue('invalid json{');
+    mockStat.mockRejectedValue(new Error('ENOENT'));
 
-    const result = readState(makeConfig());
+    const result = await readState(makeConfig());
 
     expect(result).toBeNull();
   });
 
-  it('recovers from fresh .tmp when main file is corrupt', () => {
+  it('recovers from fresh .tmp when main file is corrupt', async () => {
     const validState = {
       namespace: 'testapp-feature--test-branch',
       branch: 'feature/test-branch',
@@ -115,61 +111,60 @@ describe('readState', () => {
       lastEnsure: '2026-02-11T10:00:00Z',
     };
 
-    mockExistsSync.mockReturnValue(true);
-    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 5000 }); // 5 seconds old — fresh
-    mockReadFileSync.mockImplementation((path: string) => {
+    mockStat.mockResolvedValue({ mtimeMs: Date.now() - 5000 }); // 5 seconds old — fresh
+    mockReadFile.mockImplementation((path: string) => {
       if (typeof path === 'string' && path.endsWith('.tmp')) {
-        return JSON.stringify(validState);
+        return Promise.resolve(JSON.stringify(validState));
       }
-      return 'corrupt data{{{';
+      return Promise.resolve('corrupt data{{{');
     });
 
-    const result = readState(makeConfig());
+    const result = await readState(makeConfig());
 
     expect(result).toEqual(validState);
-    expect(mockRenameSync).toHaveBeenCalled();
+    expect(mockRename).toHaveBeenCalled();
   });
 
-  it('does not promote stale .tmp file', () => {
-    mockExistsSync.mockReturnValue(true);
-    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 120_000 }); // 2 minutes old — stale
-    mockReadFileSync.mockReturnValue('corrupt data{{{');
+  it('does not promote stale .tmp file', async () => {
+    mockStat.mockResolvedValue({ mtimeMs: Date.now() - 120_000 }); // 2 minutes old — stale
+    mockReadFile.mockResolvedValue('corrupt data{{{');
 
-    const result = readState(makeConfig());
+    const result = await readState(makeConfig());
 
     expect(result).toBeNull();
-    expect(mockRenameSync).not.toHaveBeenCalled();
+    expect(mockRename).not.toHaveBeenCalled();
     // Stale .tmp should be deleted
-    expect(mockUnlinkSync).toHaveBeenCalled();
+    expect(mockUnlink).toHaveBeenCalled();
   });
 
-  it('returns null when both main and .tmp are corrupt', () => {
-    mockExistsSync.mockReturnValue(true);
-    mockStatSync.mockReturnValue({ mtimeMs: Date.now() }); // fresh but corrupt
-    mockReadFileSync.mockReturnValue('corrupt{{{');
+  it('returns null when both main and .tmp are corrupt', async () => {
+    mockStat.mockResolvedValue({ mtimeMs: Date.now() }); // fresh but corrupt
+    mockReadFile.mockResolvedValue('corrupt{{{');
 
-    const result = readState(makeConfig());
+    const result = await readState(makeConfig());
 
     expect(result).toBeNull();
   });
 
-  it('returns null when main file has invalid state structure', () => {
-    mockExistsSync.mockImplementation((path: string) => {
-      if (path.endsWith('.tmp')) return false;
-      return true;
+  it('returns null when main file has invalid state structure', async () => {
+    mockReadFile.mockImplementation((path: string) => {
+      if (path.endsWith('.tmp')) return Promise.reject(new Error('ENOENT'));
+      return Promise.resolve(JSON.stringify({ foo: 'bar' }));
     });
-    mockReadFileSync.mockReturnValue(JSON.stringify({ foo: 'bar' }));
+    mockStat.mockRejectedValue(new Error('ENOENT'));
 
-    const result = readState(makeConfig());
+    const result = await readState(makeConfig());
 
     expect(result).toBeNull();
   });
 
-  it('uses sanitizeBranchName internally', () => {
+  it('uses sanitizeBranchName internally', async () => {
     mockExecSync.mockReturnValue('feature/test-branch');
-    mockExistsSync.mockReturnValue(false);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
+    mockStat.mockRejectedValue(new Error('ENOENT'));
+    mockReadFile.mockRejectedValue(new Error('ENOENT'));
 
-    readState(makeConfig());
+    await readState(makeConfig());
 
     expect(mockExecSync).toHaveBeenCalledWith('git branch --show-current', { encoding: 'utf-8', timeout: 3000 });
   });
@@ -232,11 +227,12 @@ describe('port allocation (via loadOrCreateState)', () => {
     mockExecSync.mockReturnValue('feature/test-branch');
     mockRelease.mockResolvedValue(undefined);
     mockLock.mockResolvedValue(mockRelease);
-    mockReaddirSync.mockReturnValue([]);
+    mockReaddir.mockResolvedValue([]);
+    mockMkdir.mockResolvedValue(undefined);
   });
 
   it('allocates ports starting at 10000', async () => {
-    mockExistsSync.mockReturnValue(false);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
     const result = await loadOrCreateState(makeConfig());
 
     expect(result.ports).toEqual({
@@ -246,9 +242,9 @@ describe('port allocation (via loadOrCreateState)', () => {
   });
 
   it('skips ports already used by other state files', async () => {
-    mockExistsSync.mockReturnValue(false);
-    mockReaddirSync.mockReturnValue(['other-branch.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
+    mockReaddir.mockResolvedValue(['other-branch.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({
       ports: { api: 10000, webapp: 10001, other: 10002 },
     }));
 
@@ -261,7 +257,7 @@ describe('port allocation (via loadOrCreateState)', () => {
   });
 
   it('returns correct port mapping for services with portForward and frontends', async () => {
-    mockExistsSync.mockReturnValue(false);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
     const config = makeConfig({
       services: [
         { name: 'api', portForward: { remotePort: 3001 } },
@@ -286,7 +282,7 @@ describe('port allocation (via loadOrCreateState)', () => {
   });
 
   it('handles config with no frontends', async () => {
-    mockExistsSync.mockReturnValue(false);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
     const config = makeConfig({
       frontends: undefined,
       services: [
@@ -302,7 +298,7 @@ describe('port allocation (via loadOrCreateState)', () => {
   });
 
   it('handles config with no services with portForward', async () => {
-    mockExistsSync.mockReturnValue(false);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
     const config = makeConfig({
       services: [
         { name: 'worker' },
@@ -320,28 +316,28 @@ describe('port allocation (via loadOrCreateState)', () => {
   });
 
   it('throws PortRangeExhaustedError when ports exceed 65535', async () => {
-    mockExistsSync.mockReturnValue(false);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
     // Fill all ports from 10000 to 65535 in blocks of 3
     const usedPorts: Record<string, number> = {};
     for (let p = 10000; p <= 65535; p++) {
       usedPorts[`svc-${p}`] = p;
     }
-    mockReaddirSync.mockReturnValue(['full.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({ ports: usedPorts }));
+    mockReaddir.mockResolvedValue(['full.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({ ports: usedPorts }));
 
     await expect(loadOrCreateState(makeConfig())).rejects.toThrow(PortRangeExhaustedError);
   });
 
   it('allocates last valid port block at the edge of 65535', async () => {
-    mockExistsSync.mockReturnValue(false);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
     // Fill all ports from 10000 to 65532, leaving 65533-65535 free.
     // With blockSize=3, block [65533,65534,65535] is the last valid block.
     const usedPorts: Record<string, number> = {};
     for (let p = 10000; p <= 65532; p++) {
       usedPorts[`svc-${p}`] = p;
     }
-    mockReaddirSync.mockReturnValue(['full.json']);
-    mockReadFileSync.mockReturnValue(JSON.stringify({ ports: usedPorts }));
+    mockReaddir.mockResolvedValue(['full.json']);
+    mockReadFile.mockResolvedValue(JSON.stringify({ ports: usedPorts }));
 
     const result = await loadOrCreateState(makeConfig());
 
@@ -353,61 +349,55 @@ describe('port allocation (via loadOrCreateState)', () => {
 describe('releasePortBlock', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRelease.mockReturnValue(undefined);
-    mockLockSync.mockReturnValue(mockRelease);
+    mockRelease.mockResolvedValue(undefined);
+    mockLock.mockResolvedValue(mockRelease);
   });
 
-  it('deletes the state file with proper locking', () => {
-    mockExistsSync.mockReturnValue(true);
+  it('deletes the state file with proper locking', async () => {
+    mockAccess.mockResolvedValue(undefined);
     const config = makeConfig();
 
-    releasePortBlock(config, 'test-branch');
+    await releasePortBlock(config, 'test-branch');
 
-    expect(mockLockSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json', expect.objectContaining({ stale: 10000 }));
-    expect(mockUnlinkSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json');
+    expect(mockLock).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json', expect.objectContaining({ retries: expect.any(Object) }));
+    expect(mockUnlink).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json');
     expect(mockRelease).toHaveBeenCalled();
   });
 
-  it('handles missing state file gracefully', () => {
-    mockExistsSync.mockReturnValue(false);
+  it('handles missing state file gracefully', async () => {
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
     const config = makeConfig();
 
-    expect(() => releasePortBlock(config, 'test-branch')).not.toThrow();
-    expect(mockLockSync).not.toHaveBeenCalled();
-    expect(mockUnlinkSync).not.toHaveBeenCalled();
+    await expect(releasePortBlock(config, 'test-branch')).resolves.not.toThrow();
+    expect(mockLock).not.toHaveBeenCalled();
+    expect(mockUnlink).not.toHaveBeenCalled();
   });
 
-  it('handles lock errors gracefully', () => {
-    mockExistsSync.mockReturnValue(true);
-    mockLockSync.mockImplementation(() => {
-      throw new Error('Lock failed');
-    });
+  it('handles lock errors gracefully', async () => {
+    mockAccess.mockResolvedValue(undefined);
+    mockLock.mockRejectedValue(new Error('Lock failed'));
     const config = makeConfig();
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    expect(() => releasePortBlock(config, 'test-branch')).not.toThrow();
+    await expect(releasePortBlock(config, 'test-branch')).resolves.not.toThrow();
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to release port block for test-branch'));
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('grove prune'));
 
     consoleWarnSpy.mockRestore();
   });
 
-  it('succeeds after initial lock contention resolves', () => {
-    mockExistsSync.mockReturnValue(true);
-    let attempts = 0;
-    mockLockSync.mockImplementation(() => {
-      attempts++;
-      if (attempts <= 3) {
-        throw new Error('Lock contention');
-      }
-      return mockRelease;
-    });
+  it('succeeds after initial lock contention resolves via lockfile retries', async () => {
+    mockAccess.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
+    // lockfile.lock with retry config handles contention internally;
+    // we simulate a single success after the lock resolves
+    mockLock.mockResolvedValue(mockRelease);
     const config = makeConfig();
 
-    releasePortBlock(config, 'test-branch');
+    await releasePortBlock(config, 'test-branch');
 
-    expect(attempts).toBe(4);
-    expect(mockUnlinkSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json');
+    expect(mockLock).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json', expect.objectContaining({ retries: expect.any(Object) }));
+    expect(mockUnlink).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json');
     expect(mockRelease).toHaveBeenCalled();
   });
 });
@@ -418,10 +408,10 @@ describe('loadOrCreateState', () => {
     mockExecSync.mockReturnValue('feature/test-branch');
     mockRelease.mockResolvedValue(undefined);
     mockLock.mockResolvedValue(mockRelease);
+    mockMkdir.mockResolvedValue(undefined);
   });
 
   it('returns existing state when file exists with locking', async () => {
-    mockExistsSync.mockReturnValue(true);
     const state = {
       namespace: 'testapp-feature--test-branch',
       branch: 'feature/test-branch',
@@ -431,7 +421,8 @@ describe('loadOrCreateState', () => {
       processes: {},
       lastEnsure: '2026-02-11T10:00:00Z',
     };
-    mockReadFileSync.mockReturnValue(JSON.stringify(state));
+    mockAccess.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue(JSON.stringify(state));
 
     const result = await loadOrCreateState(makeConfig());
 
@@ -441,8 +432,8 @@ describe('loadOrCreateState', () => {
   });
 
   it('creates new state with allocated ports when no file exists', async () => {
-    mockExistsSync.mockReturnValue(false);
-    mockReaddirSync.mockReturnValue([]);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
+    mockReaddir.mockResolvedValue([]);
 
     const result = await loadOrCreateState(makeConfig());
 
@@ -457,8 +448,8 @@ describe('loadOrCreateState', () => {
   });
 
   it('generates correct namespace from project name and worktree ID', async () => {
-    mockExistsSync.mockReturnValue(false);
-    mockReaddirSync.mockReturnValue([]);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
+    mockReaddir.mockResolvedValue([]);
     mockExecSync.mockReturnValue('feature/auth-fix');
 
     const result = await loadOrCreateState(makeConfig());
@@ -468,8 +459,8 @@ describe('loadOrCreateState', () => {
   });
 
   it('generates correct URLs for services and frontends', async () => {
-    mockExistsSync.mockReturnValue(false);
-    mockReaddirSync.mockReturnValue([]);
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
+    mockReaddir.mockResolvedValue([]);
     const config = makeConfig({
       services: [
         { name: 'api', portForward: { remotePort: 3001 }, health: { path: '/health', protocol: 'http' } },
@@ -488,14 +479,14 @@ describe('loadOrCreateState', () => {
   });
 
   it('creates new valid state when file contains empty object', async () => {
-    // Simulate: first existsSync (load path) → true, then lock succeeds,
-    // readFileSync returns '{}' (invalid state), so loadOrCreateState falls through.
-    // Then sentinel path: existsSync → false for sentinel 'wx', lock succeeds,
-    // double-check: existsSync for stateFile → true, readFileSync returns '{}' again.
+    // Simulate: first access (load path) → resolves (file exists), then lock succeeds,
+    // readFile returns '{}' (invalid state), so loadOrCreateState falls through.
+    // Then sentinel path: access → rejects for sentinel 'wx', lock succeeds,
+    // double-check: access for stateFile → resolves, readFile returns '{}' again.
     // Since '{}' fails validateState, it falls through to create new state.
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue('{}');
-    mockReaddirSync.mockReturnValue([]);
+    mockAccess.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue('{}');
+    mockReaddir.mockResolvedValue([]);
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const result = await loadOrCreateState(makeConfig());
@@ -508,10 +499,10 @@ describe('loadOrCreateState', () => {
   });
 
   it('falls back to creating new state when loading fails', async () => {
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
     // First lock call (loading existing state) fails; subsequent calls (sentinel + writeState) succeed
     mockLock.mockRejectedValueOnce(new Error('Lock failed'));
-    mockReaddirSync.mockReturnValue([]);
+    mockReaddir.mockResolvedValue([]);
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const result = await loadOrCreateState(makeConfig());
@@ -533,24 +524,24 @@ describe('loadOrCreateState', () => {
       lastEnsure: '2026-02-11T10:00:00Z',
     };
 
-    mockExistsSync.mockReturnValue(true);
-    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 5000 }); // 5 seconds old — fresh
+    mockAccess.mockResolvedValue(undefined);
+    mockStat.mockResolvedValue({ mtimeMs: Date.now() - 5000 }); // 5 seconds old — fresh
     // First lock call (loading existing state) fails
     mockLock.mockRejectedValueOnce(new Error('Lock failed'));
     // .tmp file has valid state; main file read throws (lock failed before read)
-    mockReadFileSync.mockImplementation((path: string) => {
+    mockReadFile.mockImplementation((path: string) => {
       if (typeof path === 'string' && path.endsWith('.tmp')) {
-        return JSON.stringify(validState);
+        return Promise.resolve(JSON.stringify(validState));
       }
-      throw new Error('should not read main file after lock failure');
+      return Promise.reject(new Error('should not read main file after lock failure'));
     });
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const result = await loadOrCreateState(makeConfig());
 
     expect(result).toEqual(validState);
-    // .tmp should have been promoted to main via renameSync
-    expect(mockRenameSync).toHaveBeenCalled();
+    // .tmp should have been promoted to main via rename
+    expect(mockRename).toHaveBeenCalled();
 
     consoleWarnSpy.mockRestore();
   });
@@ -561,10 +552,14 @@ describe('writeState', () => {
     vi.clearAllMocks();
     mockRelease.mockResolvedValue(undefined);
     mockLock.mockResolvedValue(mockRelease);
+    mockMkdir.mockResolvedValue(undefined);
   });
 
   it('writes to .tmp then renames to main file (atomic write)', async () => {
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+    mockRename.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
     const state = {
       namespace: 'testapp-test-branch',
       branch: 'test-branch',
@@ -578,20 +573,23 @@ describe('writeState', () => {
     await writeState(state, makeConfig());
 
     // Should write to .tmp file
-    expect(mockWriteFileSync).toHaveBeenCalledWith(
+    expect(mockWriteFile).toHaveBeenCalledWith(
       '/tmp/test-repo/.grove/test-branch.json.tmp',
       expect.stringContaining('"namespace": "testapp-test-branch"'),
       'utf-8'
     );
     // Should rename .tmp to main
-    expect(mockRenameSync).toHaveBeenCalledWith(
+    expect(mockRename).toHaveBeenCalledWith(
       '/tmp/test-repo/.grove/test-branch.json.tmp',
       '/tmp/test-repo/.grove/test-branch.json'
     );
   });
 
   it('creates the .grove directory if needed', async () => {
-    mockExistsSync.mockReturnValue(false);
+    mockAccess.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+    mockRename.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
     const state = {
       namespace: 'testapp-test-branch',
       branch: 'test-branch',
@@ -604,16 +602,14 @@ describe('writeState', () => {
 
     await writeState(state, makeConfig());
 
-    expect(mockMkdirSync).toHaveBeenCalledWith('/tmp/test-repo/.grove', { recursive: true });
+    expect(mockMkdir).toHaveBeenCalledWith('/tmp/test-repo/.grove', { recursive: true });
   });
 
   it('creates the file if it does not exist before locking', async () => {
-    const calls: Array<{ path: string, value: boolean }> = [];
-    mockExistsSync.mockImplementation((path: string) => {
-      const value = calls.length > 0 && calls[0].path === path;
-      calls.push({ path: path as string, value });
-      return value;
-    });
+    mockAccess.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+    mockRename.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
 
     const state = {
       namespace: 'testapp-test-branch',
@@ -627,12 +623,15 @@ describe('writeState', () => {
 
     await writeState(state, makeConfig());
 
-    const emptyCalls = mockWriteFileSync.mock.calls.filter(call => call[1] === '{}');
+    const emptyCalls = mockWriteFile.mock.calls.filter(call => call[1] === '{}');
     expect(emptyCalls.length).toBeGreaterThan(0);
   });
 
   it('updates lastEnsure timestamp', async () => {
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+    mockRename.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
     const state = {
       namespace: 'testapp-test-branch',
       branch: 'test-branch',
@@ -645,7 +644,7 @@ describe('writeState', () => {
 
     await writeState(state, makeConfig());
 
-    const writtenContent = mockWriteFileSync.mock.calls.find(call =>
+    const writtenContent = mockWriteFile.mock.calls.find(call =>
       typeof call[1] === 'string' && call[1].includes('"namespace"')
     )?.[1];
 
@@ -656,7 +655,8 @@ describe('writeState', () => {
   });
 
   it('throws StateWriteFailedError when lock fails', async () => {
-    mockExistsSync.mockReturnValue(true);
+    mockAccess.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
     mockLock.mockRejectedValue(new Error('Lock timeout'));
     const state = {
       namespace: 'testapp-test-branch',
@@ -672,8 +672,10 @@ describe('writeState', () => {
   });
 
   it('cleans up .tmp file on failure', async () => {
-    mockExistsSync.mockReturnValue(true);
-    mockRenameSync.mockImplementation(() => { throw new Error('rename failed'); });
+    mockAccess.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+    mockUnlink.mockResolvedValue(undefined);
+    mockRename.mockRejectedValue(new Error('rename failed'));
     const state = {
       namespace: 'testapp-test-branch',
       branch: 'test-branch',
@@ -685,7 +687,7 @@ describe('writeState', () => {
     };
 
     await expect(writeState(state, makeConfig())).rejects.toThrow(StateWriteFailedError);
-    expect(mockUnlinkSync).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json.tmp');
+    expect(mockUnlink).toHaveBeenCalledWith('/tmp/test-repo/.grove/test-branch.json.tmp');
   });
 });
 
@@ -695,17 +697,18 @@ describe('getAllUsedPorts (via loadOrCreateState)', () => {
     mockExecSync.mockReturnValue('feature/test-branch');
     mockRelease.mockResolvedValue(undefined);
     mockLock.mockResolvedValue(mockRelease);
-    mockRenameSync.mockReturnValue(undefined);
+    mockRename.mockResolvedValue(undefined);
+    mockMkdir.mockResolvedValue(undefined);
   });
 
   it('logs warning for corrupt JSON state files during port scan', async () => {
-    mockExistsSync.mockReturnValue(false);
-    mockReaddirSync.mockReturnValue(['corrupt.json', 'valid.json']);
-    mockReadFileSync.mockImplementation((path: string) => {
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
+    mockReaddir.mockResolvedValue(['corrupt.json', 'valid.json']);
+    mockReadFile.mockImplementation((path: string) => {
       if (typeof path === 'string' && path.includes('corrupt.json')) {
-        return 'not valid json{{{';
+        return Promise.resolve('not valid json{{{');
       }
-      return JSON.stringify({ ports: { api: 10000 } });
+      return Promise.resolve(JSON.stringify({ ports: { api: 10000 } }));
     });
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 

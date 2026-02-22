@@ -201,7 +201,7 @@ describe('environment state concurrency', () => {
       writeFileSync(join(stateDir, 'main.json'), '{"truncated": ', 'utf-8');
       writeFileSync(join(stateDir, 'main.json.tmp'), JSON.stringify(validState, null, 2), 'utf-8');
 
-      const result = readState(config);
+      const result = await readState(config);
 
       expect(result).not.toBeNull();
       expect(result!.namespace).toBe('testapp-main');
@@ -229,7 +229,7 @@ describe('environment state concurrency', () => {
       // Main file is corrupt
       writeFileSync(join(stateDir, 'main.json'), '{"truncated": ', 'utf-8');
 
-      const result = readState(config);
+      const result = await readState(config);
 
       // Should NOT recover from stale .tmp
       expect(result).toBeNull();
@@ -245,7 +245,7 @@ describe('environment state concurrency', () => {
       writeFileSync(join(stateDir, 'main.json'), 'corrupt{', 'utf-8');
       writeFileSync(join(stateDir, 'main.json.tmp'), 'also corrupt{', 'utf-8');
 
-      const result = readState(config);
+      const result = await readState(config);
       expect(result).toBeNull();
     });
 
@@ -276,7 +276,7 @@ describe('environment state concurrency', () => {
       const readResults: Array<EnvironmentState | null> = [];
       const readPromises = Array.from({ length: 20 }, async () => {
         await new Promise(r => setTimeout(r, Math.random() * 5));
-        readResults.push(readState(config));
+        readResults.push(await readState(config));
       });
 
       await Promise.all([...writePromises, ...readPromises]);
@@ -298,14 +298,12 @@ describe('environment state concurrency', () => {
       await writeState(makeState('branch-a', { api: 10000, webapp: 10001 }), config);
       await writeState(makeState('branch-b', { api: 10003, webapp: 10004 }), config);
 
-      // Start the async write first — it yields at await lockfile.lock()
-      const writePromise = writeState(makeState('branch-b', { api: 10006, webapp: 10007 }), config);
-
-      // releasePortBlock (sync) runs while writeState is pending on its async lock.
-      // These operate on different files so there should be no interference.
-      releasePortBlock(config, 'branch-a');
-
-      await writePromise;
+      // Both operations are now async — run them concurrently.
+      // They operate on different files so there should be no interference.
+      await Promise.all([
+        writeState(makeState('branch-b', { api: 10006, webapp: 10007 }), config),
+        releasePortBlock(config, 'branch-a'),
+      ]);
 
       const stateDir = join(testDir, '.grove');
 
@@ -324,17 +322,15 @@ describe('environment state concurrency', () => {
 
       await writeState(makeState('contested', { api: 10000, webapp: 10001 }), config);
 
-      // Start the async write — it yields at await lockfile.lock()
-      const writePromise = writeState(makeState('contested', { api: 10003, webapp: 10004 }), config);
-
-      // releasePortBlock (sync) runs while writeState is pending.
+      // Both are now async — run them concurrently.
       // Race: one deletes the state, the other writes.
       // If releasePortBlock deletes between writeState's file creation and lock acquisition,
       // writeState throws. Both outcomes are valid.
-      releasePortBlock(config, 'contested');
-
       try {
-        await writePromise;
+        await Promise.all([
+          writeState(makeState('contested', { api: 10003, webapp: 10004 }), config),
+          releasePortBlock(config, 'contested'),
+        ]);
       } catch {
         // Expected: releasePortBlock deleted the file before writeState acquired the lock
       }
