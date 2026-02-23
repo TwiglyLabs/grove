@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { access } from 'fs/promises';
 import { listWorkspaceStates, readWorkspaceState, findWorkspaceByBranch } from './state.js';
 import { getRepoStatus } from './git.js';
 import { formatAge } from '../shared/output.js';
@@ -15,8 +15,9 @@ export interface WorkspaceListItem {
   missing: boolean;
 }
 
-export function listWorkspaces(): WorkspaceListItem[] {
-  return listWorkspaceStates().map(s => ({
+export async function listWorkspaces(): Promise<WorkspaceListItem[]> {
+  const states = await listWorkspaceStates();
+  return Promise.all(states.map(async s => ({
     id: s.id,
     branch: s.branch,
     status: s.status,
@@ -24,8 +25,8 @@ export function listWorkspaces(): WorkspaceListItem[] {
     repos: s.repos.map(r => r.name),
     createdAt: s.createdAt,
     age: formatAge(new Date(s.createdAt)),
-    missing: !existsSync(s.root),
-  }));
+    missing: await access(s.root).then(() => false, () => true),
+  })));
 }
 
 export interface WorkspaceStatusRepo {
@@ -43,15 +44,15 @@ export interface WorkspaceStatusResult {
   repos: WorkspaceStatusRepo[];
 }
 
-export function getWorkspaceStatus(branchOrId?: string): WorkspaceStatusResult {
+export async function getWorkspaceStatus(branchOrId?: string): Promise<WorkspaceStatusResult> {
   let state: WorkspaceState | null = null;
 
   if (branchOrId) {
     // Try as workspace ID first, then as branch
-    state = readWorkspaceState(branchOrId) ?? findWorkspaceByBranch(branchOrId);
+    state = await readWorkspaceState(branchOrId) ?? await findWorkspaceByBranch(branchOrId);
   } else {
     // Auto-detect from cwd
-    state = detectWorkspaceFromCwd();
+    state = await detectWorkspaceFromCwd();
   }
 
   if (!state) {
@@ -62,11 +63,12 @@ export function getWorkspaceStatus(branchOrId?: string): WorkspaceStatusResult {
     );
   }
 
-  const repos: WorkspaceStatusRepo[] = state.repos.map(repo => {
+  const repos: WorkspaceStatusRepo[] = await Promise.all(state.repos.map(async repo => {
     let dirty = 0;
     let commits = 0;
 
-    if (existsSync(repo.worktree)) {
+    const worktreeExists = await access(repo.worktree).then(() => true, () => false);
+    if (worktreeExists) {
       const status = getRepoStatus(repo.worktree, repo.parentBranch);
       dirty = status.dirty;
       commits = status.commits;
@@ -81,7 +83,7 @@ export function getWorkspaceStatus(branchOrId?: string): WorkspaceStatusResult {
       commits,
       syncStatus,
     };
-  });
+  }));
 
   return {
     id: state.id,
@@ -91,8 +93,8 @@ export function getWorkspaceStatus(branchOrId?: string): WorkspaceStatusResult {
   };
 }
 
-function detectWorkspaceFromCwd(): WorkspaceState | null {
-  const states = listWorkspaceStates();
+async function detectWorkspaceFromCwd(): Promise<WorkspaceState | null> {
+  const states = await listWorkspaceStates();
   const cwd = process.cwd();
 
   // Check if cwd is inside any workspace's worktree root

@@ -13,7 +13,7 @@ export interface SyncResult {
 }
 
 export async function syncWorkspace(branch: string): Promise<SyncResult> {
-  const state = readWorkspaceState(branch) ?? findWorkspaceByBranch(branch);
+  const state = await readWorkspaceState(branch) ?? await findWorkspaceByBranch(branch);
   if (!state) {
     throw new Error(`No workspace found for '${branch}'`);
   }

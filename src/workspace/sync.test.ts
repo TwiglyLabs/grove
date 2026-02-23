@@ -65,7 +65,7 @@ describe('syncWorkspace', () => {
 
   it('syncs all repos successfully with no conflicts', async () => {
     const state = createWorkspaceState();
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
     mockMerge.mockReturnValue({ ok: true, conflicts: [] });
 
     const result = await syncWorkspace('feature-x');
@@ -86,7 +86,7 @@ describe('syncWorkspace', () => {
 
   it('syncs parent repo first before children', async () => {
     const state = createWorkspaceState();
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
     mockMerge.mockReturnValue({ ok: true, conflicts: [] });
 
     await syncWorkspace('feature-x');
@@ -100,7 +100,7 @@ describe('syncWorkspace', () => {
 
   it('throws ConflictError when merge has conflicts', async () => {
     const state = createWorkspaceState();
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
     mockMerge.mockReturnValueOnce({ ok: true, conflicts: [] }); // parent succeeds
     mockMerge.mockReturnValueOnce({ ok: false, conflicts: ['file1.ts', 'file2.ts'] }); // child fails
 
@@ -128,7 +128,7 @@ describe('syncWorkspace', () => {
         },
       },
     });
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
     mockIsMergeInProgress.mockReturnValue(false);
     mockHasDirtyWorkingTree.mockReturnValue(false);
 
@@ -153,7 +153,7 @@ describe('syncWorkspace', () => {
         },
       },
     });
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
     mockIsMergeInProgress.mockReturnValue(true);
 
     await expect(syncWorkspace('feature-x')).rejects.toThrow(ConflictError);
@@ -178,7 +178,7 @@ describe('syncWorkspace', () => {
         },
       },
     });
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
     mockIsMergeInProgress.mockReturnValue(false);
     mockHasDirtyWorkingTree.mockReturnValue(true);
 
@@ -196,8 +196,8 @@ describe('syncWorkspace', () => {
   });
 
   it('throws error when workspace not found', async () => {
-    mockReadWorkspaceState.mockReturnValue(null);
-    mockFindWorkspaceByBranch.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
+    mockFindWorkspaceByBranch.mockResolvedValue(null);
 
     await expect(syncWorkspace('nonexistent')).rejects.toThrow(
       "No workspace found for 'nonexistent'"
@@ -206,7 +206,7 @@ describe('syncWorkspace', () => {
 
   it('throws error when workspace is in closing state', async () => {
     const state = createWorkspaceState({ status: 'closing' });
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
 
     await expect(syncWorkspace('feature-x')).rejects.toThrow(
       "Workspace 'myproject-feature-x' is in 'closing' state, expected 'active' or 'failed'"
@@ -215,7 +215,7 @@ describe('syncWorkspace', () => {
 
   it('throws error when workspace is in creating state', async () => {
     const state = createWorkspaceState({ status: 'creating' });
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
 
     await expect(syncWorkspace('feature-x')).rejects.toThrow(
       "Workspace 'myproject-feature-x' is in 'creating' state, expected 'active' or 'failed'"
@@ -224,7 +224,7 @@ describe('syncWorkspace', () => {
 
   it('syncs failed workspace after resetting to active', async () => {
     const state = createWorkspaceState({ status: 'failed' });
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
     mockMerge.mockReturnValue({ ok: true, conflicts: [] });
 
     const result = await syncWorkspace('feature-x');
@@ -238,8 +238,8 @@ describe('syncWorkspace', () => {
 
   it('finds workspace by branch when not found by ID', async () => {
     const state = createWorkspaceState();
-    mockReadWorkspaceState.mockReturnValue(null);
-    mockFindWorkspaceByBranch.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(null);
+    mockFindWorkspaceByBranch.mockResolvedValue(state);
     mockMerge.mockReturnValue({ ok: true, conflicts: [] });
 
     const result = await syncWorkspace('feature-x');
@@ -250,7 +250,7 @@ describe('syncWorkspace', () => {
 
   it('initializes sync state on first run', async () => {
     const state = createWorkspaceState();
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
     mockMerge.mockReturnValue({ ok: true, conflicts: [] });
 
     await syncWorkspace('feature-x');
@@ -275,7 +275,7 @@ describe('syncWorkspace', () => {
         },
       },
     });
-    mockReadWorkspaceState.mockReturnValue(state);
+    mockReadWorkspaceState.mockResolvedValue(state);
     mockMerge.mockReturnValue({ ok: true, conflicts: [] });
 
     const result = await syncWorkspace('feature-x');

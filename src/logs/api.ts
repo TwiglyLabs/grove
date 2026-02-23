@@ -62,7 +62,7 @@ export async function* streamPodLogs(
   options?: { tail?: number },
 ): AsyncIterable<string> {
   const config = await loadConfig(repo);
-  const state = readState(config);
+  const state = await readState(config);
 
   if (!state) {
     throw new EnvironmentNotRunningError();

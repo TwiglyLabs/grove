@@ -277,7 +277,7 @@ async function runProcess(
 // --- Main Function ---
 
 export async function runTests(config: GroveConfig, options: TestOptions): Promise<TestResult> {
-  let state = readState(config);
+  let state = await readState(config);
   const timeout = options.timeout || config.testing?.defaultTimeout || 300000;
 
   // Read existing state or auto-ensure

@@ -20,7 +20,7 @@ export async function closeWorkspace(
   mode: 'merge' | 'discard',
   options: CloseOptions = {},
 ): Promise<CloseDryRunResult | void> {
-  const state = readWorkspaceState(branch) ?? findWorkspaceByBranch(branch);
+  const state = await readWorkspaceState(branch) ?? await findWorkspaceByBranch(branch);
   if (!state) {
     throw new Error(`No workspace found for '${branch}'`);
   }
@@ -140,7 +140,7 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
     }
   }
 
-  deleteWorkspaceState(state.id);
+  await deleteWorkspaceState(state.id);
 }
 
 async function closeDiscard(state: WorkspaceState): Promise<void> {
@@ -179,7 +179,7 @@ async function closeDiscard(state: WorkspaceState): Promise<void> {
     }
   }
 
-  deleteWorkspaceState(state.id);
+  await deleteWorkspaceState(state.id);
 
   if (warnings.length > 0) {
     console.warn('Warnings during discard:\n' + warnings.map(w => `  - ${w}`).join('\n'));

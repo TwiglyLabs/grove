@@ -1,6 +1,6 @@
 ---
 title: Async State I/O for Electron Integration
-status: not_started
+status: done
 description: >-
   Convert grove registry and workspace state I/O from sync to async, eliminating
   main thread blocking in Electron contexts.
@@ -9,6 +9,7 @@ tags:
   - cross-repo
 type: feature
 not_started_at: '2026-02-22T22:53:44.647Z'
+completed_at: '2026-02-22T23:11:42.728Z'
 ---
 
 ## Problem

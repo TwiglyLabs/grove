@@ -6,7 +6,7 @@
  * accept RepoId — the CLI resolves paths to IDs via findByPath().
  */
 
-import { existsSync, realpathSync } from 'fs';
+import { access, realpath } from 'fs/promises';
 import {
   readRegistry,
   addRepo as internalAddRepo,
@@ -76,22 +76,26 @@ export async function get(repo: RepoId): Promise<RepoEntry | null> {
  */
 export async function list(): Promise<RepoListEntry[]> {
   const registry = await readRegistry();
-  const workspaces = listWorkspaceStates();
+  const workspaces = await listWorkspaceStates();
 
-  return registry.repos
+  const sorted = registry.repos
     .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(entry => {
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return Promise.all(
+    sorted.map(async entry => {
       const matching = workspaces.filter(ws => ws.source === entry.path);
+      const exists = await access(entry.path).then(() => true, () => false);
       return {
         id: asRepoId(entry.id!),
         name: entry.name,
         path: entry.path,
         addedAt: entry.addedAt,
-        exists: existsSync(entry.path),
+        exists,
         workspaceCount: matching.length,
       };
-    });
+    }),
+  );
 }
 
 /**
@@ -103,27 +107,31 @@ export async function findByPath(path: string): Promise<RepoEntry | null> {
   const registry = await readRegistry();
   let resolvedPath: string;
   try {
-    resolvedPath = realpathSync(path);
+    resolvedPath = await realpath(path);
   } catch {
     resolvedPath = path;
   }
 
-  const entry = registry.repos.find(r => {
+  for (const r of registry.repos) {
+    let rResolved: string;
     try {
-      return realpathSync(r.path) === resolvedPath;
+      rResolved = await realpath(r.path);
     } catch {
-      return r.path === resolvedPath;
+      rResolved = r.path;
     }
-  });
 
-  if (!entry || !entry.id) return null;
+    if (rResolved === resolvedPath) {
+      if (!r.id) return null;
+      return {
+        id: asRepoId(r.id),
+        name: r.name,
+        path: r.path,
+        addedAt: r.addedAt,
+      };
+    }
+  }
 
-  return {
-    id: asRepoId(entry.id),
-    name: entry.name,
-    path: entry.path,
-    addedAt: entry.addedAt,
-  };
+  return null;
 }
 
 /**

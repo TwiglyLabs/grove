@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { access } from 'fs/promises';
 import { readRegistry } from './state.js';
 import { listWorkspaceStates } from '../workspace/state.js';
 
@@ -23,18 +23,21 @@ export interface RepoListResult {
 
 export async function listRepos(): Promise<RepoListResult> {
   const registry = await readRegistry();
-  const workspaces = listWorkspaceStates();
+  const workspaces = await listWorkspaceStates();
 
-  const repos: RepoListItem[] = registry.repos
+  const sorted = registry.repos
     .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(entry => {
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const repos: RepoListItem[] = await Promise.all(
+    sorted.map(async entry => {
       const matching = workspaces.filter(ws => ws.source === entry.path);
+      const exists = await access(entry.path).then(() => true, () => false);
 
       return {
         name: entry.name,
         path: entry.path,
-        exists: existsSync(entry.path),
+        exists,
         workspaces: matching.map(ws => ({
           id: ws.id,
           branch: ws.branch,
@@ -43,7 +46,8 @@ export async function listRepos(): Promise<RepoListResult> {
           repoCount: ws.repos.length,
         })),
       };
-    });
+    }),
+  );
 
   return { repos };
 }

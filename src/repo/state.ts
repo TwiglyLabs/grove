@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
 import * as lockfile from 'proper-lockfile';
@@ -11,28 +11,25 @@ export function getRegistryDir(): string {
   return process.env.GROVE_REGISTRY_DIR || join(homedir(), '.grove');
 }
 
-function ensureRegistryDir(): string {
+async function ensureRegistryDir(): Promise<string> {
   const dir = getRegistryDir();
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+  await mkdir(dir, { recursive: true });
   return dir;
 }
 
 function registryFilePath(): string {
-  return join(ensureRegistryDir(), 'repos.json');
+  return join(getRegistryDir(), 'repos.json');
 }
 
 function emptyRegistry(): RepoRegistry {
   return { version: 1, repos: [] };
 }
 
-function readRegistryFromDisk(): RepoRegistry {
+async function readRegistryFromDisk(): Promise<RepoRegistry> {
   const filePath = registryFilePath();
-  if (!existsSync(filePath)) return emptyRegistry();
 
   try {
-    const content = readFileSync(filePath, 'utf-8');
+    const content = await readFile(filePath, 'utf-8');
     const parsed = RepoRegistry.safeParse(JSON.parse(content));
     return parsed.success ? parsed.data : emptyRegistry();
   } catch {
@@ -42,11 +39,11 @@ function readRegistryFromDisk(): RepoRegistry {
 
 async function withRegistryLock<T>(fn: () => T | Promise<T>): Promise<T> {
   const filePath = registryFilePath();
-  ensureRegistryDir();
+  await ensureRegistryDir();
 
   // Ensure file exists for proper-lockfile
   try {
-    writeFileSync(filePath, '{}', { flag: 'wx' });
+    await writeFile(filePath, '{}', { flag: 'wx' });
   } catch {
     // File already exists — expected
   }
@@ -64,7 +61,7 @@ async function withRegistryLock<T>(fn: () => T | Promise<T>): Promise<T> {
  * When missing IDs are found, they are generated and written back atomically.
  */
 export async function readRegistry(): Promise<RepoRegistry> {
-  const registry = readRegistryFromDisk();
+  const registry = await readRegistryFromDisk();
 
   if (registry.repos.length === 0) return registry;
 
@@ -73,14 +70,14 @@ export async function readRegistry(): Promise<RepoRegistry> {
   if (!needsMigration) return registry;
 
   // Backfill IDs under lock to avoid overwriting concurrent changes
-  return withRegistryLock(() => {
-    const fresh = readRegistryFromDisk();
+  return withRegistryLock(async () => {
+    const fresh = await readRegistryFromDisk();
     for (const entry of fresh.repos) {
       if (!entry.id) {
         entry.id = createRepoId();
       }
     }
-    writeFileSync(registryFilePath(), JSON.stringify(fresh, null, 2), 'utf-8');
+    await writeFile(registryFilePath(), JSON.stringify(fresh, null, 2), 'utf-8');
     return fresh;
   });
 }
@@ -92,8 +89,8 @@ export interface AddResult {
 }
 
 export async function addRepo(name: string, path: string): Promise<AddResult> {
-  return withRegistryLock(() => {
-    const registry = readRegistryFromDisk();
+  return withRegistryLock(async () => {
+    const registry = await readRegistryFromDisk();
 
     // Backfill IDs if needed
     for (const entry of registry.repos) {
@@ -124,15 +121,15 @@ export async function addRepo(name: string, path: string): Promise<AddResult> {
     };
 
     registry.repos.push(entry);
-    writeFileSync(registryFilePath(), JSON.stringify(registry, null, 2), 'utf-8');
+    await writeFile(registryFilePath(), JSON.stringify(registry, null, 2), 'utf-8');
 
     return { name, path, alreadyRegistered: false };
   });
 }
 
 export async function removeRepo(name: string): Promise<void> {
-  return withRegistryLock(() => {
-    const registry = readRegistryFromDisk();
+  return withRegistryLock(async () => {
+    const registry = await readRegistryFromDisk();
 
     // Backfill IDs if needed
     for (const entry of registry.repos) {
@@ -147,6 +144,6 @@ export async function removeRepo(name: string): Promise<void> {
     }
 
     registry.repos.splice(idx, 1);
-    writeFileSync(registryFilePath(), JSON.stringify(registry, null, 2), 'utf-8');
+    await writeFile(registryFilePath(), JSON.stringify(registry, null, 2), 'utf-8');
   });
 }

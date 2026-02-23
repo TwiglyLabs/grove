@@ -30,7 +30,7 @@ export async function createWorkspace(
 
   // Check for failed state and clean up
   const workspaceId = `${projectName}-${branch}`;
-  const existingState = readWorkspaceState(workspaceId);
+  const existingState = await readWorkspaceState(workspaceId);
   if (existingState?.status === 'failed') {
     await cleanupFailed(existingState);
   }
@@ -65,7 +65,7 @@ export async function createWorkspace(
   }
 
   // Run preflight
-  const preflight = preflightCreate(sources, branch);
+  const preflight = await preflightCreate(sources, branch);
   if (!preflight.ok) {
     throw new Error(preflight.errors.join('\n'));
   }
@@ -216,5 +216,5 @@ async function cleanupFailed(state: WorkspaceState): Promise<void> {
       // Ignore — may already be gone
     }
   }
-  deleteWorkspaceState(state.id);
+  await deleteWorkspaceState(state.id);
 }

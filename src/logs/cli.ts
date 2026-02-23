@@ -17,7 +17,7 @@ export async function logsCommand(repoId: RepoId, serviceName: string, args: str
   if (isPod) {
     // kubectl logs mode — need namespace from state
     const config = await loadConfig(repoId);
-    const state = readState(config);
+    const state = await readState(config);
     if (!state) {
       printWarning('No state file found - environment is not running');
       return;

@@ -95,7 +95,7 @@ describe('closeWorkspace', () => {
   describe('merge mode', () => {
     it('syncs then closes workspace successfully', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockCanFFMerge.mockReturnValue(true);
       mockGetCurrentBranch.mockReturnValue('some-branch');
@@ -155,7 +155,7 @@ describe('closeWorkspace', () => {
 
     it('processes children before parent in close loop', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockCanFFMerge.mockReturnValue(true);
       mockGetCurrentBranch.mockReturnValue('some-branch');
@@ -171,7 +171,7 @@ describe('closeWorkspace', () => {
 
     it('throws error when workspace has dirty files', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValueOnce(true);
 
       await expect(closeWorkspace('feature-x', 'merge')).rejects.toThrow(
@@ -186,7 +186,7 @@ describe('closeWorkspace', () => {
 
     it('throws error when workspace is not active', async () => {
       const state = createWorkspaceState({ status: 'closing' });
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
 
       await expect(closeWorkspace('feature-x', 'merge')).rejects.toThrow(
         "Cannot merge-close workspace in 'closing' state. Use --discard instead."
@@ -195,7 +195,7 @@ describe('closeWorkspace', () => {
 
     it('sets state to failed when ff-merge fails in close loop (safety net)', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockCanFFMerge.mockReturnValue(true); // FF check passes
       mockGetCurrentBranch.mockReturnValue('some-branch');
@@ -215,8 +215,8 @@ describe('closeWorkspace', () => {
     });
 
     it('throws error when workspace not found', async () => {
-      mockReadWorkspaceState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(null);
+      mockReadWorkspaceState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(null);
 
       await expect(closeWorkspace('nonexistent', 'merge')).rejects.toThrow(
         "No workspace found for 'nonexistent'"
@@ -225,7 +225,7 @@ describe('closeWorkspace', () => {
 
     it('continues cleanup even if worktree removal fails', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockCanFFMerge.mockReturnValue(true);
       mockGetCurrentBranch.mockReturnValue('some-branch');
@@ -243,7 +243,7 @@ describe('closeWorkspace', () => {
 
     it('continues cleanup even if branch deletion fails', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockCanFFMerge.mockReturnValue(true);
       mockGetCurrentBranch.mockReturnValue('some-branch');
@@ -260,7 +260,7 @@ describe('closeWorkspace', () => {
 
     it('throws descriptive error when sync hits conflicts, stays active', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockSyncWorkspace.mockRejectedValue(
         new mockConflictError('Merge conflicts in public', 'public', ['file.ts'], ['myproject'], []),
@@ -281,7 +281,7 @@ describe('closeWorkspace', () => {
 
     it('throws error naming repo when FF check fails after sync', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockGetCurrentBranch.mockReturnValue('some-branch');
       mockCanFFMerge
@@ -301,7 +301,7 @@ describe('closeWorkspace', () => {
 
     it('dry-run skips sync and FF check', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockGetRepoStatus.mockReturnValue({ dirty: 0, commits: 3 });
 
@@ -323,7 +323,7 @@ describe('closeWorkspace', () => {
 
     it('FF check failure restores source repos to original branches', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
       mockGetCurrentBranch
         .mockReturnValueOnce('original-branch-1')
@@ -346,7 +346,7 @@ describe('closeWorkspace', () => {
   describe('discard mode', () => {
     it('discards workspace successfully', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
 
       await closeWorkspace('feature-x', 'discard');
 
@@ -390,7 +390,7 @@ describe('closeWorkspace', () => {
 
     it('processes repos in reverse order', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
 
       await closeWorkspace('feature-x', 'discard');
 
@@ -402,7 +402,7 @@ describe('closeWorkspace', () => {
 
     it('succeeds even when workspace is in failed state', async () => {
       const state = createWorkspaceState({ status: 'failed' });
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
 
       await closeWorkspace('feature-x', 'discard');
 
@@ -411,7 +411,7 @@ describe('closeWorkspace', () => {
 
     it('completes even when all operations fail', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockMergeAbort.mockImplementation(() => {
         throw new Error('Merge abort failed');
       });
@@ -431,7 +431,7 @@ describe('closeWorkspace', () => {
 
     it('continues even if state write fails', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(state);
       mockWriteWorkspaceState.mockImplementation(() => {
         throw new Error('State write failed');
       });
@@ -448,8 +448,8 @@ describe('closeWorkspace', () => {
 
     it('finds workspace by branch when not found by ID', async () => {
       const state = createWorkspaceState();
-      mockReadWorkspaceState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(state);
+      mockReadWorkspaceState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(state);
 
       await closeWorkspace('feature-x', 'discard');
 

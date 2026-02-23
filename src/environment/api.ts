@@ -6,7 +6,7 @@
  */
 
 import { execSync } from 'child_process';
-import { writeFileSync } from 'fs';
+import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { load as loadConfig } from '../shared/config.js';
 import type { GroveConfig } from '../config.js';
@@ -91,7 +91,7 @@ export async function down(
   unregisterCleanupHandler();
 
   const config = await loadConfig(repo);
-  const state = internalReadState(config);
+  const state = await internalReadState(config);
 
   if (!state) {
     return { stopped: [], notRunning: [] };
@@ -149,7 +149,7 @@ export async function destroy(
   // Stop processes first
   const downResult = await down(repo);
 
-  const state = internalReadState(config);
+  const state = await internalReadState(config);
 
   if (!state) {
     return {
@@ -183,7 +183,7 @@ export async function destroy(
   // Remove state file
   let stateRemoved = false;
   try {
-    releasePortBlock(config, state.worktreeId);
+    await releasePortBlock(config, state.worktreeId);
     stateRemoved = true;
   } catch {
     // State file may not exist
@@ -201,7 +201,7 @@ export async function destroy(
  */
 export async function status(repo: RepoId): Promise<DashboardData | null> {
   const config = await loadConfig(repo);
-  const state = internalReadState(config);
+  const state = await internalReadState(config);
 
   if (!state) {
     return null;
@@ -275,7 +275,7 @@ export async function watch(
   events?: EnvironmentEvents,
 ): Promise<WatchHandle> {
   const config = await loadConfig(repo);
-  const state = internalReadState(config);
+  const state = await internalReadState(config);
 
   if (!state) {
     throw new EnvironmentNotRunningError();
@@ -315,13 +315,13 @@ export async function reload(
   service: string,
 ): Promise<void> {
   const config = await loadConfig(repo);
-  const state = internalReadState(config);
+  const state = await internalReadState(config);
 
   if (!state) {
     throw new EnvironmentNotRunningError();
   }
 
-  writeFileSync(join(config.repoRoot, '.reload-request'), service + '\n');
+  await writeFile(join(config.repoRoot, '.reload-request'), service + '\n');
 }
 
 /**
@@ -377,7 +377,7 @@ import type {
 } from './types.js';
 
 async function pruneStoppedProcesses(config: GroveConfig, dryRun: boolean): Promise<StoppedProcessEntry[]> {
-  const entries = pruneChecks.findStoppedProcesses(config);
+  const entries = await pruneChecks.findStoppedProcesses(config);
   if (!dryRun && entries.length > 0) {
     await pruneChecks.cleanStoppedProcesses(config, entries);
   }
@@ -385,7 +385,7 @@ async function pruneStoppedProcesses(config: GroveConfig, dryRun: boolean): Prom
 }
 
 async function pruneDanglingPorts(config: GroveConfig, dryRun: boolean): Promise<DanglingPortEntry[]> {
-  const entries = pruneChecks.findDanglingPorts(config);
+  const entries = await pruneChecks.findDanglingPorts(config);
   if (!dryRun && entries.length > 0) {
     await pruneChecks.cleanDanglingPorts(config, entries);
   }
@@ -393,23 +393,23 @@ async function pruneDanglingPorts(config: GroveConfig, dryRun: boolean): Promise
 }
 
 async function pruneStaleStateFiles(config: GroveConfig, dryRun: boolean): Promise<StaleStateFileEntry[]> {
-  const entries = pruneChecks.findStaleStateFiles(config);
+  const entries = await pruneChecks.findStaleStateFiles(config);
   if (!dryRun && entries.length > 0) {
-    pruneChecks.cleanStaleStateFiles(config, entries);
+    await pruneChecks.cleanStaleStateFiles(config, entries);
   }
   return entries;
 }
 
 async function pruneOrphanedWorktrees(dryRun: boolean): Promise<OrphanedWorktreeEntry[]> {
-  const entries = findOrphanedWs();
+  const entries = await findOrphanedWs();
   if (!dryRun && entries.length > 0) {
-    cleanOrphanedWs(entries);
+    await cleanOrphanedWs(entries);
   }
   return entries;
 }
 
 async function pruneOrphanedNamespaces(config: GroveConfig, dryRun: boolean): Promise<OrphanedNamespaceEntry[]> {
-  const entries = pruneChecks.findOrphanedNamespaces(config);
+  const entries = await pruneChecks.findOrphanedNamespaces(config);
   if (!dryRun && entries.length > 0) {
     pruneChecks.cleanOrphanedNamespaces(entries);
   }

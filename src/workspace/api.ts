@@ -7,7 +7,7 @@
  */
 
 import { basename, resolve } from 'path';
-import { realpathSync } from 'fs';
+import { realpath } from 'fs/promises';
 import { createWorkspace as internalCreate, type CreateResult as InternalCreateResult } from './create.js';
 import { listWorkspaces as internalList } from './status.js';
 import { getWorkspaceStatus as internalGetStatus } from './status.js';
@@ -81,16 +81,18 @@ export async function create(
  * List all workspaces. Optionally filter by source repo.
  */
 export async function list(options?: ListOptions): Promise<WorkspaceListEntry[]> {
-  const items = internalList();
+  const items = await internalList();
 
   let filtered = items;
   if (options?.repo) {
     const repoPath = await resolveRepoPath(options.repo);
-    filtered = items.filter(ws => {
-      // Match by checking if the workspace source path matches
-      const state = internalReadState(ws.id);
-      return state?.source === repoPath;
-    });
+    const filterResults = await Promise.all(
+      items.map(async ws => {
+        const state = await internalReadState(ws.id);
+        return { ws, matches: state?.source === repoPath };
+      }),
+    );
+    filtered = filterResults.filter(r => r.matches).map(r => r.ws);
   }
 
   return filtered.map(item => ({
@@ -106,8 +108,8 @@ export async function list(options?: ListOptions): Promise<WorkspaceListEntry[]>
 /**
  * Get detailed status for a workspace including per-repo dirty/commit counts.
  */
-export function getStatus(workspace: WorkspaceId): WorkspaceStatusResult {
-  const result = internalGetStatus(workspace);
+export async function getStatus(workspace: WorkspaceId): Promise<WorkspaceStatusResult> {
+  const result = await internalGetStatus(workspace);
 
   return {
     id: asWorkspaceId(result.id),
@@ -126,7 +128,7 @@ export async function sync(
   _events?: WorkspaceEvents,
 ): Promise<SyncResult> {
   // Resolve workspace ID to branch for the internal function
-  const state = resolveWorkspace(workspace);
+  const state = await resolveWorkspace(workspace);
 
   try {
     const result = await internalSync(state.branch);
@@ -151,7 +153,7 @@ export async function close(
   options?: CloseOptions,
   _events?: WorkspaceEvents,
 ): Promise<CloseResult | DryRunResult> {
-  const state = resolveWorkspace(workspace);
+  const state = await resolveWorkspace(workspace);
 
   const result = await internalClose(state.branch, mode, { dryRun: options?.dryRun });
 
@@ -168,24 +170,24 @@ export async function close(
 /**
  * Resolve workspace root path for shell integration.
  */
-export function resolvePath(workspace: WorkspaceId): string {
-  const state = resolveWorkspace(workspace);
+export async function resolvePath(workspace: WorkspaceId): Promise<string> {
+  const state = await resolveWorkspace(workspace);
   return state.root;
 }
 
 /**
  * Direct state access for advanced use cases.
  */
-export function readState(workspace: WorkspaceId): WorkspaceState | null {
-  return internalReadState(workspace) ?? findWorkspaceByBranch(workspace) ?? null;
+export async function readState(workspace: WorkspaceId): Promise<WorkspaceState | null> {
+  return await internalReadState(workspace) ?? await findWorkspaceByBranch(workspace) ?? null;
 }
 
 /**
  * Find orphaned worktrees — workspace states whose root directory no longer exists.
  * Used by environment prune to clean up stale workspace state.
  */
-export function findOrphanedWorktrees(): Array<{ path: string; workspaceId: string }> {
-  const states = internalList();
+export async function findOrphanedWorktrees(): Promise<Array<{ path: string; workspaceId: string }>> {
+  const states = await internalList();
   const orphaned: Array<{ path: string; workspaceId: string }> = [];
 
   for (const ws of states) {
@@ -203,10 +205,10 @@ export function findOrphanedWorktrees(): Array<{ path: string; workspaceId: stri
 /**
  * Clean up orphaned workspace states by deleting their state files.
  */
-export function cleanOrphanedWorktrees(entries: Array<{ workspaceId: string }>): void {
+export async function cleanOrphanedWorktrees(entries: Array<{ workspaceId: string }>): Promise<void> {
   for (const entry of entries) {
     try {
-      internalDeleteState(entry.workspaceId);
+      await internalDeleteState(entry.workspaceId);
     } catch {
       // Best-effort cleanup
     }
@@ -217,11 +219,11 @@ export function cleanOrphanedWorktrees(entries: Array<{ workspaceId: string }>):
  * Describe a workspace environment — compose workspace state, environment state,
  * and config into a single EnvironmentDescriptor for handoff to agents.
  */
-export function describe(workspace: WorkspaceId): EnvironmentDescriptor {
-  const state = resolveWorkspace(workspace);
+export async function describe(workspace: WorkspaceId): Promise<EnvironmentDescriptor> {
+  const state = await resolveWorkspace(workspace);
   const config = loadConfig(state.source);
   const worktreeId = sanitizeBranchName(state.branch);
-  const envState = readEnvState(config, worktreeId);
+  const envState = await readEnvState(config, worktreeId);
 
   // Workspace info from state
   const workspaceInfo: EnvironmentDescriptor['workspace'] = {
@@ -278,7 +280,7 @@ async function resolveRepoRefs(
   const resolved: Array<{ path: string; name: string }> = [];
   const seenPaths = new Set<string>();
   const seenNames = new Set<string>();
-  const parentReal = realpathSync(parentPath);
+  const parentReal = await realpath(parentPath);
 
   for (const ref of refs) {
     let refPath: string;
@@ -304,7 +306,7 @@ async function resolveRepoRefs(
     }
 
     // Deduplicate: skip if same as parent
-    const realPath = realpathSync(refPath);
+    const realPath = await realpath(refPath);
     if (realPath === parentReal) continue;
 
     // Validate uniqueness
@@ -324,8 +326,8 @@ async function resolveRepoRefs(
 }
 
 /** Resolve a WorkspaceId to a WorkspaceState, throwing if not found */
-function resolveWorkspace(workspace: WorkspaceId): WorkspaceState {
-  const state = internalReadState(workspace) ?? findWorkspaceByBranch(workspace);
+async function resolveWorkspace(workspace: WorkspaceId): Promise<WorkspaceState> {
+  const state = await internalReadState(workspace) ?? await findWorkspaceByBranch(workspace);
   if (!state) {
     throw new WorkspaceNotFoundError(workspace);
   }

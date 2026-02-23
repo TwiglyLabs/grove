@@ -18,7 +18,7 @@ const {
   mockLoadConfig,
   mockReadEnvState,
   mockSanitizeBranchName,
-  mockRealpathSync,
+  mockRealpath,
   InternalConflictError,
 } = vi.hoisted(() => {
   class _InternalConflictError extends Error {
@@ -46,16 +46,16 @@ const {
     mockLoadConfig: vi.fn(),
     mockReadEnvState: vi.fn(),
     mockSanitizeBranchName: vi.fn(),
-    mockRealpathSync: vi.fn((p: string) => p),
+    mockRealpath: vi.fn(async (p: string) => p),
     InternalConflictError: _InternalConflictError,
   };
 });
 
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
   return {
     ...actual,
-    realpathSync: mockRealpathSync,
+    realpath: mockRealpath,
   };
 });
 
@@ -207,7 +207,7 @@ describe('workspace api', () => {
         path: '/repos/api',
         addedAt: '2026-01-01',
       });
-      mockRealpathSync.mockImplementation((p: string) => p);
+      mockRealpath.mockImplementation(async (p: string) => p);
       mockInternalCreate.mockResolvedValue({
         id: 'project-feature-x',
         root: '/home/user/worktrees/project/feature-x',
@@ -228,7 +228,7 @@ describe('workspace api', () => {
 
     it('repos with RepoSpec absolute path → used as-is', async () => {
       mockResolveRepoPath.mockResolvedValue('/repos/project');
-      mockRealpathSync.mockImplementation((p: string) => p);
+      mockRealpath.mockImplementation(async (p: string) => p);
       mockInternalCreate.mockResolvedValue({
         id: 'project-feature-x',
         root: '/home/user/worktrees/project/feature-x',
@@ -249,7 +249,7 @@ describe('workspace api', () => {
 
     it('repos with RepoSpec relative path → resolved against parent root', async () => {
       mockResolveRepoPath.mockResolvedValue('/repos/project');
-      mockRealpathSync.mockImplementation((p: string) => p);
+      mockRealpath.mockImplementation(async (p: string) => p);
       mockInternalCreate.mockResolvedValue({
         id: 'project-feature-x',
         root: '/home/user/worktrees/project/feature-x',
@@ -270,7 +270,7 @@ describe('workspace api', () => {
 
     it('repos with explicit name → name used for worktree directory', async () => {
       mockResolveRepoPath.mockResolvedValue('/repos/project');
-      mockRealpathSync.mockImplementation((p: string) => p);
+      mockRealpath.mockImplementation(async (p: string) => p);
       mockInternalCreate.mockResolvedValue({
         id: 'project-feature-x',
         root: '/home/user/worktrees/project/feature-x',
@@ -291,7 +291,7 @@ describe('workspace api', () => {
 
     it('repos containing parent repo → silently deduplicated', async () => {
       mockResolveRepoPath.mockResolvedValue('/repos/project');
-      mockRealpathSync.mockImplementation((p: string) => p);
+      mockRealpath.mockImplementation(async (p: string) => p);
       mockInternalCreate.mockResolvedValue({
         id: 'project-feature-x',
         root: '/home/user/worktrees/project/feature-x',
@@ -315,7 +315,7 @@ describe('workspace api', () => {
 
     it('repos with duplicate paths → throws', async () => {
       mockResolveRepoPath.mockResolvedValue('/repos/project');
-      mockRealpathSync.mockImplementation((p: string) => p);
+      mockRealpath.mockImplementation(async (p: string) => p);
 
       await expect(create('feature-x', {
         from: testRepoId,
@@ -328,7 +328,7 @@ describe('workspace api', () => {
 
     it('repos with duplicate names → throws with disambiguation hint', async () => {
       mockResolveRepoPath.mockResolvedValue('/repos/project');
-      mockRealpathSync.mockImplementation((p: string) => p);
+      mockRealpath.mockImplementation(async (p: string) => p);
 
       await expect(create('feature-x', {
         from: testRepoId,
@@ -374,7 +374,7 @@ describe('workspace api', () => {
 
     it('repos with Windows-style absolute path → treated as absolute, not relative', async () => {
       mockResolveRepoPath.mockResolvedValue('/repos/project');
-      mockRealpathSync.mockImplementation((p: string) => p);
+      mockRealpath.mockImplementation(async (p: string) => p);
       mockInternalCreate.mockResolvedValue({
         id: 'project-feature-x',
         root: '/home/user/worktrees/project/feature-x',
@@ -414,7 +414,7 @@ describe('workspace api', () => {
 
   describe('list', () => {
     it('returns all workspaces with branded IDs', async () => {
-      mockInternalList.mockReturnValue([
+      mockInternalList.mockResolvedValue([
         { id: 'ws-1', branch: 'feat-a', status: 'active', age: '2h', root: '/a', missing: false },
         { id: 'ws-2', branch: 'feat-b', status: 'active', age: '1d', root: '/b', missing: false },
       ]);
@@ -428,14 +428,14 @@ describe('workspace api', () => {
 
     it('filters by repo when option provided', async () => {
       mockResolveRepoPath.mockResolvedValue('/repos/project');
-      mockInternalList.mockReturnValue([
+      mockInternalList.mockResolvedValue([
         { id: 'ws-1', branch: 'feat-a', status: 'active', age: '2h', root: '/a', missing: false },
         { id: 'ws-2', branch: 'feat-b', status: 'active', age: '1d', root: '/b', missing: false },
       ]);
       // ws-1 matches the repo source, ws-2 does not
       mockInternalReadState
-        .mockReturnValueOnce(makeState({ id: 'ws-1', source: '/repos/project' }))
-        .mockReturnValueOnce(makeState({ id: 'ws-2', source: '/repos/other' }));
+        .mockResolvedValueOnce(makeState({ id: 'ws-1', source: '/repos/project' }))
+        .mockResolvedValueOnce(makeState({ id: 'ws-2', source: '/repos/other' }));
 
       const result = await list({ repo: testRepoId });
 
@@ -446,10 +446,10 @@ describe('workspace api', () => {
 
     it('returns empty when no workspaces match repo filter', async () => {
       mockResolveRepoPath.mockResolvedValue('/repos/project');
-      mockInternalList.mockReturnValue([
+      mockInternalList.mockResolvedValue([
         { id: 'ws-1', branch: 'feat-a', status: 'active', age: '2h', root: '/a', missing: false },
       ]);
-      mockInternalReadState.mockReturnValue(makeState({ source: '/repos/other' }));
+      mockInternalReadState.mockResolvedValue(makeState({ source: '/repos/other' }));
 
       const result = await list({ repo: testRepoId });
       expect(result).toHaveLength(0);
@@ -457,15 +457,15 @@ describe('workspace api', () => {
   });
 
   describe('getStatus', () => {
-    it('passes workspace ID through and brands result', () => {
-      mockInternalGetStatus.mockReturnValue({
+    it('passes workspace ID through and brands result', async () => {
+      mockInternalGetStatus.mockResolvedValue({
         id: 'project-feature-x',
         status: 'active',
         branch: 'feature-x',
         repos: [{ name: 'project', role: 'parent', dirty: 2, commits: 3, syncStatus: null }],
       });
 
-      const result = getStatus(testWsId);
+      const result = await getStatus(testWsId);
 
       expect(mockInternalGetStatus).toHaveBeenCalledWith(testWsId);
       expect(result.id).toBe('project-feature-x');
@@ -476,7 +476,7 @@ describe('workspace api', () => {
 
   describe('sync', () => {
     it('resolves workspace, calls internalSync, returns result', async () => {
-      mockInternalReadState.mockReturnValue(makeState());
+      mockInternalReadState.mockResolvedValue(makeState());
 
       mockInternalSync.mockResolvedValue({
         synced: ['project'],
@@ -493,7 +493,7 @@ describe('workspace api', () => {
     });
 
     it('converts internal ConflictError to shared ConflictError', async () => {
-      mockInternalReadState.mockReturnValue(makeState());
+      mockInternalReadState.mockResolvedValue(makeState());
       mockInternalSync.mockRejectedValue(
         new InternalConflictError('conflict', 'project', ['file.ts']),
       );
@@ -509,15 +509,15 @@ describe('workspace api', () => {
     });
 
     it('throws WorkspaceNotFoundError when workspace does not exist', async () => {
-      mockInternalReadState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(null);
+      mockInternalReadState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(null);
 
       await expect(sync(testWsId)).rejects.toThrow(WorkspaceNotFoundError);
     });
 
     it('falls back to findWorkspaceByBranch when ID lookup fails', async () => {
-      mockInternalReadState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(makeState());
+      mockInternalReadState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(makeState());
       mockInternalSync.mockResolvedValue({ synced: ['project'], details: [] });
 
       await sync(testWsId);
@@ -529,7 +529,7 @@ describe('workspace api', () => {
 
   describe('close', () => {
     it('calls internalClose with merge mode', async () => {
-      mockInternalReadState.mockReturnValue(makeState());
+      mockInternalReadState.mockResolvedValue(makeState());
       mockInternalClose.mockResolvedValue(undefined);
 
       const result = await close(testWsId, 'merge');
@@ -539,7 +539,7 @@ describe('workspace api', () => {
     });
 
     it('calls internalClose with discard mode', async () => {
-      mockInternalReadState.mockReturnValue(makeState());
+      mockInternalReadState.mockResolvedValue(makeState());
       mockInternalClose.mockResolvedValue(undefined);
 
       const result = await close(testWsId, 'discard');
@@ -549,7 +549,7 @@ describe('workspace api', () => {
     });
 
     it('returns dry-run result when dryRun option is set', async () => {
-      mockInternalReadState.mockReturnValue(makeState());
+      mockInternalReadState.mockResolvedValue(makeState());
       const dryRunResult = { repos: [{ name: 'project', commits: 5 }] };
       mockInternalClose.mockResolvedValue(dryRunResult);
 
@@ -560,79 +560,79 @@ describe('workspace api', () => {
     });
 
     it('throws WorkspaceNotFoundError when workspace does not exist', async () => {
-      mockInternalReadState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(null);
+      mockInternalReadState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(null);
 
       await expect(close(testWsId, 'merge')).rejects.toThrow(WorkspaceNotFoundError);
     });
   });
 
   describe('resolvePath', () => {
-    it('returns workspace root path', () => {
-      mockInternalReadState.mockReturnValue(makeState());
+    it('returns workspace root path', async () => {
+      mockInternalReadState.mockResolvedValue(makeState());
 
-      expect(resolvePath(testWsId)).toBe('/home/user/worktrees/project/feature-x');
+      expect(await resolvePath(testWsId)).toBe('/home/user/worktrees/project/feature-x');
     });
 
-    it('throws WorkspaceNotFoundError when workspace does not exist', () => {
-      mockInternalReadState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(null);
+    it('throws WorkspaceNotFoundError when workspace does not exist', async () => {
+      mockInternalReadState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(null);
 
-      expect(() => resolvePath(testWsId)).toThrow(WorkspaceNotFoundError);
+      await expect(resolvePath(testWsId)).rejects.toThrow(WorkspaceNotFoundError);
     });
   });
 
   describe('readState', () => {
-    it('returns state when found by ID', () => {
+    it('returns state when found by ID', async () => {
       const state = makeState();
-      mockInternalReadState.mockReturnValue(state);
+      mockInternalReadState.mockResolvedValue(state);
 
-      expect(readState(testWsId)).toEqual(state);
+      expect(await readState(testWsId)).toEqual(state);
     });
 
-    it('falls back to branch lookup when ID not found', () => {
+    it('falls back to branch lookup when ID not found', async () => {
       const state = makeState();
-      mockInternalReadState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(state);
+      mockInternalReadState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(state);
 
-      expect(readState(testWsId)).toEqual(state);
+      expect(await readState(testWsId)).toEqual(state);
     });
 
-    it('returns null when workspace not found by either method', () => {
-      mockInternalReadState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(null);
+    it('returns null when workspace not found by either method', async () => {
+      mockInternalReadState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(null);
 
-      expect(readState(testWsId)).toBeNull();
+      expect(await readState(testWsId)).toBeNull();
     });
   });
 
   describe('findOrphanedWorktrees', () => {
-    it('returns empty array when no workspaces exist', () => {
-      mockInternalList.mockReturnValue([]);
+    it('returns empty array when no workspaces exist', async () => {
+      mockInternalList.mockResolvedValue([]);
 
-      const result = findOrphanedWorktrees();
+      const result = await findOrphanedWorktrees();
 
       expect(result).toEqual([]);
     });
 
-    it('returns empty array when all workspaces have existing roots', () => {
-      mockInternalList.mockReturnValue([
+    it('returns empty array when all workspaces have existing roots', async () => {
+      mockInternalList.mockResolvedValue([
         { id: 'ws-1', branch: 'feat-a', status: 'active', age: '2h', root: '/a', missing: false },
         { id: 'ws-2', branch: 'feat-b', status: 'active', age: '1d', root: '/b', missing: false },
       ]);
 
-      const result = findOrphanedWorktrees();
+      const result = await findOrphanedWorktrees();
 
       expect(result).toEqual([]);
     });
 
-    it('detects workspaces whose root directory is missing', () => {
-      mockInternalList.mockReturnValue([
+    it('detects workspaces whose root directory is missing', async () => {
+      mockInternalList.mockResolvedValue([
         { id: 'ws-1', branch: 'feat-a', status: 'active', age: '2h', root: '/a', missing: false },
         { id: 'ws-2', branch: 'feat-b', status: 'active', age: '1d', root: '/gone', missing: true },
       ]);
 
-      const result = findOrphanedWorktrees();
+      const result = await findOrphanedWorktrees();
 
       expect(result).toEqual([{
         path: '/gone',
@@ -640,40 +640,38 @@ describe('workspace api', () => {
       }]);
     });
 
-    it('detects multiple orphaned worktrees', () => {
-      mockInternalList.mockReturnValue([
+    it('detects multiple orphaned worktrees', async () => {
+      mockInternalList.mockResolvedValue([
         { id: 'ws-1', branch: 'feat-a', status: 'active', age: '2h', root: '/gone-a', missing: true },
         { id: 'ws-2', branch: 'feat-b', status: 'active', age: '1d', root: '/gone-b', missing: true },
       ]);
 
-      const result = findOrphanedWorktrees();
+      const result = await findOrphanedWorktrees();
 
       expect(result).toHaveLength(2);
     });
   });
 
   describe('cleanOrphanedWorktrees', () => {
-    it('deletes workspace state files for orphaned entries', () => {
+    it('deletes workspace state files for orphaned entries', async () => {
       const entries = [
         { path: '/gone', workspaceId: 'ws-2' },
       ];
 
-      cleanOrphanedWorktrees(entries);
+      await cleanOrphanedWorktrees(entries);
 
       expect(mockDeleteWorkspaceState).toHaveBeenCalledWith('ws-2');
     });
 
-    it('continues when deletion fails', () => {
-      mockDeleteWorkspaceState.mockImplementation(() => {
-        throw new Error('Failed');
-      });
+    it('continues when deletion fails', async () => {
+      mockDeleteWorkspaceState.mockRejectedValue(new Error('Failed'));
 
       const entries = [
         { path: '/gone-a', workspaceId: 'ws-1' },
         { path: '/gone-b', workspaceId: 'ws-2' },
       ];
 
-      expect(() => cleanOrphanedWorktrees(entries)).not.toThrow();
+      await expect(cleanOrphanedWorktrees(entries)).resolves.not.toThrow();
       expect(mockDeleteWorkspaceState).toHaveBeenCalledTimes(2);
     });
   });
@@ -721,12 +719,12 @@ describe('workspace api', () => {
       mockSanitizeBranchName.mockReturnValue('feature-x');
     });
 
-    it('composes full descriptor from workspace state, env state, and config', () => {
-      mockInternalReadState.mockReturnValue(makeState());
+    it('composes full descriptor from workspace state, env state, and config', async () => {
+      mockInternalReadState.mockResolvedValue(makeState());
       mockLoadConfig.mockReturnValue(fullConfig);
       mockReadEnvState.mockReturnValue(envState);
 
-      const result = describeWorkspace(testWsId);
+      const result = await describeWorkspace(testWsId);
 
       expect(result.workspace).toEqual({
         id: 'project-feature-x',
@@ -747,34 +745,34 @@ describe('workspace api', () => {
       });
     });
 
-    it('loads config from workspace source path', () => {
-      mockInternalReadState.mockReturnValue(makeState({ source: '/repos/myrepo' }));
+    it('loads config from workspace source path', async () => {
+      mockInternalReadState.mockResolvedValue(makeState({ source: '/repos/myrepo' }));
       mockLoadConfig.mockReturnValue(fullConfig);
       mockReadEnvState.mockReturnValue(envState);
 
-      describeWorkspace(testWsId);
+      await describeWorkspace(testWsId);
 
       expect(mockLoadConfig).toHaveBeenCalledWith('/repos/myrepo');
     });
 
-    it('passes sanitized branch name as worktreeId to readEnvState', () => {
-      mockInternalReadState.mockReturnValue(makeState());
+    it('passes sanitized branch name as worktreeId to readEnvState', async () => {
+      mockInternalReadState.mockResolvedValue(makeState());
       mockLoadConfig.mockReturnValue(fullConfig);
       mockReadEnvState.mockReturnValue(envState);
       mockSanitizeBranchName.mockReturnValue('feat--my-branch');
 
-      describeWorkspace(testWsId);
+      await describeWorkspace(testWsId);
 
       expect(mockSanitizeBranchName).toHaveBeenCalledWith('feature-x');
       expect(mockReadEnvState).toHaveBeenCalledWith(fullConfig, 'feat--my-branch');
     });
 
-    it('returns empty URLs and zero ports when environment is not running', () => {
-      mockInternalReadState.mockReturnValue(makeState());
+    it('returns empty URLs and zero ports when environment is not running', async () => {
+      mockInternalReadState.mockResolvedValue(makeState());
       mockLoadConfig.mockReturnValue(fullConfig);
       mockReadEnvState.mockReturnValue(null);
 
-      const result = describeWorkspace(testWsId);
+      const result = await describeWorkspace(testWsId);
 
       expect(result.services).toEqual([
         { name: 'api', url: '', port: 0 },
@@ -784,39 +782,39 @@ describe('workspace api', () => {
       ]);
     });
 
-    it('returns empty testing commands when config has no testing section', () => {
-      mockInternalReadState.mockReturnValue(makeState());
+    it('returns empty testing commands when config has no testing section', async () => {
+      mockInternalReadState.mockResolvedValue(makeState());
       mockLoadConfig.mockReturnValue({ ...fullConfig, testing: undefined });
       mockReadEnvState.mockReturnValue(envState);
 
-      const result = describeWorkspace(testWsId);
+      const result = await describeWorkspace(testWsId);
 
       expect(result.testing).toEqual({ commands: {} });
     });
 
-    it('returns empty shell targets when config has no utilities', () => {
-      mockInternalReadState.mockReturnValue(makeState());
+    it('returns empty shell targets when config has no utilities', async () => {
+      mockInternalReadState.mockResolvedValue(makeState());
       mockLoadConfig.mockReturnValue({ ...fullConfig, utilities: undefined });
       mockReadEnvState.mockReturnValue(envState);
 
-      const result = describeWorkspace(testWsId);
+      const result = await describeWorkspace(testWsId);
 
       expect(result.shell).toEqual({ targets: [] });
     });
 
-    it('only includes services with portForward in services list', () => {
-      mockInternalReadState.mockReturnValue(makeState());
+    it('only includes services with portForward in services list', async () => {
+      mockInternalReadState.mockResolvedValue(makeState());
       mockLoadConfig.mockReturnValue(fullConfig);
       mockReadEnvState.mockReturnValue(envState);
 
-      const result = describeWorkspace(testWsId);
+      const result = await describeWorkspace(testWsId);
 
       // 'worker' has no portForward, should be excluded
       expect(result.services).toHaveLength(1);
       expect(result.services[0].name).toBe('api');
     });
 
-    it('maps multiple repos including parent and child', () => {
+    it('maps multiple repos including parent and child', async () => {
       const multiRepoState = makeState({
         repos: [
           { name: 'project', role: 'parent', source: '/repos/project', worktree: '/home/user/worktrees/project/feature-x', parentBranch: 'main' },
@@ -824,11 +822,11 @@ describe('workspace api', () => {
           { name: 'cloud', role: 'child', source: '/repos/cloud', worktree: '/home/user/worktrees/project/feature-x/cloud', parentBranch: 'main' },
         ],
       });
-      mockInternalReadState.mockReturnValue(multiRepoState);
+      mockInternalReadState.mockResolvedValue(multiRepoState);
       mockLoadConfig.mockReturnValue(fullConfig);
       mockReadEnvState.mockReturnValue(envState);
 
-      const result = describeWorkspace(testWsId);
+      const result = await describeWorkspace(testWsId);
 
       expect(result.workspace.repos).toEqual([
         { name: 'project', role: 'parent', path: '/home/user/worktrees/project/feature-x' },
@@ -837,8 +835,8 @@ describe('workspace api', () => {
       ]);
     });
 
-    it('includes only configured testing platforms in commands', () => {
-      mockInternalReadState.mockReturnValue(makeState());
+    it('includes only configured testing platforms in commands', async () => {
+      mockInternalReadState.mockResolvedValue(makeState());
       mockLoadConfig.mockReturnValue({
         ...fullConfig,
         testing: {
@@ -850,12 +848,12 @@ describe('workspace api', () => {
       });
       mockReadEnvState.mockReturnValue(envState);
 
-      const result = describeWorkspace(testWsId);
+      const result = await describeWorkspace(testWsId);
 
       expect(result.testing.commands).toEqual({ mobile: 'maestro' });
     });
 
-    it('maps multiple services with portForward', () => {
+    it('maps multiple services with portForward', async () => {
       const multiServiceConfig = {
         ...fullConfig,
         services: [
@@ -869,11 +867,11 @@ describe('workspace api', () => {
         ports: { api: 10000, auth: 10001, webapp: 10002 },
         urls: { api: 'http://127.0.0.1:10000', auth: 'http://127.0.0.1:10001', webapp: 'http://127.0.0.1:10002' },
       };
-      mockInternalReadState.mockReturnValue(makeState());
+      mockInternalReadState.mockResolvedValue(makeState());
       mockLoadConfig.mockReturnValue(multiServiceConfig);
       mockReadEnvState.mockReturnValue(multiServiceEnvState);
 
-      const result = describeWorkspace(testWsId);
+      const result = await describeWorkspace(testWsId);
 
       expect(result.services).toEqual([
         { name: 'api', url: 'http://127.0.0.1:10000', port: 10000 },
@@ -881,11 +879,11 @@ describe('workspace api', () => {
       ]);
     });
 
-    it('throws WorkspaceNotFoundError when workspace does not exist', () => {
-      mockInternalReadState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(null);
+    it('throws WorkspaceNotFoundError when workspace does not exist', async () => {
+      mockInternalReadState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(null);
 
-      expect(() => describeWorkspace(testWsId)).toThrow(WorkspaceNotFoundError);
+      await expect(describeWorkspace(testWsId)).rejects.toThrow(WorkspaceNotFoundError);
     });
   });
 });

@@ -65,11 +65,11 @@ describe('workspace state concurrency', () => {
       ),
     );
 
-    const states = listWorkspaceStates();
+    const states = await listWorkspaceStates();
     expect(states).toHaveLength(count);
 
     for (let i = 0; i < count; i++) {
-      const state = readWorkspaceState(`ws-${i}`);
+      const state = await readWorkspaceState(`ws-${i}`);
       expect(state).not.toBeNull();
       expect(state!.branch).toBe(`branch-${i}`);
     }
@@ -89,7 +89,7 @@ describe('workspace state concurrency', () => {
     );
 
     // The file on disk is valid (not corrupted)
-    const state = readWorkspaceState('contested');
+    const state = await readWorkspaceState('contested');
     expect(state).not.toBeNull();
     expect(state!.version).toBe(1);
     expect(state!.id).toBe('contested');
@@ -127,18 +127,15 @@ describe('workspace state concurrency', () => {
 
       // Concurrently: delete ws-delete while writing to ws-keep
       await Promise.all([
-        new Promise<void>(resolve => {
-          deleteWorkspaceState('ws-delete');
-          resolve();
-        }),
+        deleteWorkspaceState('ws-delete'),
         writeWorkspaceState(makeState({ id: 'ws-keep', branch: 'keep-me-updated' })),
       ]);
 
       // ws-delete should be gone
-      expect(readWorkspaceState('ws-delete')).toBeNull();
+      expect(await readWorkspaceState('ws-delete')).toBeNull();
 
       // ws-keep should be intact with updated data
-      const kept = readWorkspaceState('ws-keep');
+      const kept = await readWorkspaceState('ws-keep');
       expect(kept).not.toBeNull();
       expect(kept!.branch).toBe('keep-me-updated');
     });
@@ -149,16 +146,13 @@ describe('workspace state concurrency', () => {
       // Race: delete and write compete on the same state file.
       // Either outcome is valid — file deleted or file updated.
       await Promise.all([
-        new Promise<void>(resolve => {
-          deleteWorkspaceState('contested');
-          resolve();
-        }),
+        deleteWorkspaceState('contested'),
         writeWorkspaceState(makeState({ id: 'contested', branch: 'updated' })),
       ]);
 
       const filePath = join(testDir, '.grove', 'workspaces', 'contested.json');
       if (existsSync(filePath)) {
-        const state = readWorkspaceState('contested');
+        const state = await readWorkspaceState('contested');
         expect(state).not.toBeNull();
         expect(state!.id).toBe('contested');
       }
@@ -173,8 +167,8 @@ describe('workspace state concurrency', () => {
         writeWorkspaceState(makeState({ id: 'ws-fail', status: 'failed', branch: 'fail' })),
       ]);
 
-      const ok = readWorkspaceState('ws-ok');
-      const fail = readWorkspaceState('ws-fail');
+      const ok = await readWorkspaceState('ws-ok');
+      const fail = await readWorkspaceState('ws-fail');
 
       expect(ok).not.toBeNull();
       expect(ok!.status).toBe('active');
@@ -183,8 +177,54 @@ describe('workspace state concurrency', () => {
       expect(fail!.status).toBe('failed');
 
       // Both state files are independent — the failed workspace didn't corrupt the active one
-      const states = listWorkspaceStates();
+      const states = await listWorkspaceStates();
       expect(states).toHaveLength(2);
+    });
+
+    it('concurrent reads during delete return valid state or null, never throw', { timeout: 30_000 }, async () => {
+      await writeWorkspaceState(makeState({ id: 'read-delete', branch: 'ephemeral' }));
+
+      // Fire many reads concurrently with a delete — each read should return
+      // either a valid WorkspaceState or null, never throw.
+      const reads = Array.from({ length: 20 }, () => readWorkspaceState('read-delete'));
+      const deleteOp = deleteWorkspaceState('read-delete');
+
+      const results = await Promise.all([...reads, deleteOp]);
+
+      // Last element is the delete (void). All others are WorkspaceState | null.
+      for (let i = 0; i < results.length - 1; i++) {
+        const result = results[i] as WorkspaceState | null;
+        if (result !== null) {
+          expect(result.id).toBe('read-delete');
+          expect(result.branch).toBe('ephemeral');
+        }
+      }
+
+      // After everything settles, the file should be gone
+      expect(await readWorkspaceState('read-delete')).toBeNull();
+    });
+
+    it('listWorkspaceStates tolerates file deleted between readdir and readFile', { timeout: 30_000 }, async () => {
+      // Create several workspaces, then delete one while listing
+      for (let i = 0; i < 5; i++) {
+        await writeWorkspaceState(makeState({ id: `list-race-${i}`, branch: `b-${i}` }));
+      }
+
+      // Race: list and delete happen concurrently
+      const [states] = await Promise.all([
+        listWorkspaceStates(),
+        deleteWorkspaceState('list-race-2'),
+      ]);
+
+      // Should get 4 or 5 states (depending on timing), never throw
+      expect(states.length).toBeGreaterThanOrEqual(4);
+      expect(states.length).toBeLessThanOrEqual(5);
+
+      // All returned states must be valid
+      for (const s of states) {
+        expect(s.version).toBe(1);
+        expect(s.id).toMatch(/^list-race-\d$/);
+      }
     });
 
     it('status transitions during concurrent writes are isolated', { timeout: 30_000 }, async () => {
@@ -202,7 +242,7 @@ describe('workspace state concurrency', () => {
       );
 
       for (let i = 0; i < 5; i++) {
-        const state = readWorkspaceState(`ws-${i}`);
+        const state = await readWorkspaceState(`ws-${i}`);
         expect(state).not.toBeNull();
         expect(state!.status).toBe(statuses[i]);
       }

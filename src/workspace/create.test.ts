@@ -68,7 +68,8 @@ describe('createWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExecSync.mockReturnValue('/repos/project');
-    mockReadWorkspaceState.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
+    mockDeleteWorkspaceState.mockResolvedValue(undefined);
     mockLoadWorkspaceConfig.mockReturnValue(null);
     mockValidateRepoPaths.mockReturnValue([]);
     mockGetWorktreeBasePath.mockReturnValue('/home/user/worktrees');
@@ -81,7 +82,7 @@ describe('createWorkspace', () => {
   });
 
   it('simple workspace create (no config) → calls createWorktree once, writes state twice (creating then active)', async () => {
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         {
@@ -135,7 +136,7 @@ describe('createWorkspace', () => {
       ],
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         {
@@ -202,7 +203,7 @@ describe('createWorkspace', () => {
   });
 
   it('preflight failure → throws error, no worktrees created', async () => {
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: false,
       errors: ['Branch already exists', 'Workspace already exists'],
     });
@@ -216,7 +217,7 @@ describe('createWorkspace', () => {
   });
 
   it('rollback on createWorktree failure → removes already-created worktrees, state set to failed', async () => {
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         {
@@ -280,7 +281,7 @@ describe('createWorkspace', () => {
   });
 
   it('existing failed state → cleaned up before retrying', async () => {
-    mockReadWorkspaceState.mockReturnValue({
+    mockReadWorkspaceState.mockResolvedValue({
       version: 1,
       id: 'project-feature-x',
       status: 'failed',
@@ -308,7 +309,7 @@ describe('createWorkspace', () => {
       sync: null,
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         {
@@ -346,7 +347,7 @@ describe('createWorkspace', () => {
   it('uses custom from path when provided', async () => {
     mockExecSync.mockReturnValue('/other/project');
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         {
@@ -374,7 +375,7 @@ describe('createWorkspace', () => {
       setup: ['npm install', 'npm run codegen'],
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -411,7 +412,7 @@ describe('createWorkspace', () => {
       setup: ['npm install', 'npm run codegen'],
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -443,7 +444,7 @@ describe('createWorkspace', () => {
       hooks: { postCreate: './scripts/post-create.sh' },
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -483,7 +484,7 @@ describe('createWorkspace', () => {
       hooks: { postCreate: './scripts/post-create.sh' },
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -504,7 +505,7 @@ describe('createWorkspace', () => {
   });
 
   it('does not run setup when no setup commands configured', async () => {
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -525,7 +526,7 @@ describe('createWorkspace', () => {
       hooks: { postCreate: './scripts/post-create.sh' },
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -554,7 +555,7 @@ describe('createWorkspace', () => {
       repos: [{ path: 'config-repo' }],
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -592,7 +593,7 @@ describe('createWorkspace', () => {
       repos: [{ path: 'config-repo' }],
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -621,7 +622,7 @@ describe('createWorkspace', () => {
       setup: ['npm install'],
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -651,7 +652,7 @@ describe('createWorkspace', () => {
       hooks: { postCreate: './scripts/post-create.sh' },
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
@@ -695,7 +696,7 @@ describe('createWorkspace', () => {
       hooks: { postCreate: './scripts/post-create.sh' },
     });
 
-    mockPreflightCreate.mockReturnValue({
+    mockPreflightCreate.mockResolvedValue({
       ok: true,
       sources: [
         { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },

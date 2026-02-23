@@ -13,9 +13,9 @@ vi.mock('os', async () => {
   };
 });
 
-const { add, remove, get, list, findByPath } = await import('./api.js');
+const { add, remove, get, list, findByPath, resolveRepoPath } = await import('./api.js');
 const { RepoNotFoundError } = await import('../shared/errors.js');
-const { isRepoId } = await import('../shared/identity.js');
+const { isRepoId, asRepoId } = await import('../shared/identity.js');
 
 describe('repo API', () => {
   beforeEach(() => {
@@ -109,6 +109,45 @@ describe('repo API', () => {
     it('returns null for unregistered path', async () => {
       const found = await findByPath('/tmp/nonexistent');
       expect(found).toBeNull();
+    });
+  });
+
+  describe('resolveRepoPath', () => {
+    it('returns the path for a registered repo', async () => {
+      const added = await add('/tmp/resolve-repo');
+      const path = await resolveRepoPath(added.id);
+      expect(path).toBe('/tmp/resolve-repo');
+    });
+
+    it('throws RepoNotFoundError for unknown RepoId', async () => {
+      await expect(resolveRepoPath(asRepoId('repo_nonexistent1'))).rejects.toThrow(RepoNotFoundError);
+    });
+  });
+
+  describe('list with workspace counts', () => {
+    it('returns workspaceCount > 0 when workspace states exist', async () => {
+      const repoPath = testDir; // Use testDir so it exists on disk
+      await add(repoPath);
+
+      // Write a workspace state file whose source matches the repo path
+      const wsDir = join(testDir, '.grove', 'workspaces');
+      writeFileSync(join(wsDir, 'test-ws.json'), JSON.stringify({
+        version: 1,
+        id: 'test-ws',
+        status: 'active',
+        branch: 'feature-x',
+        createdAt: '2026-02-14T10:00:00Z',
+        updatedAt: '2026-02-14T10:00:00Z',
+        root: '/tmp/worktrees/feature-x',
+        source: repoPath,
+        repos: [{ name: 'test', role: 'parent', source: repoPath, worktree: '/tmp/wt', parentBranch: 'main' }],
+        sync: null,
+      }));
+
+      const entries = await list();
+      const entry = entries.find(e => e.path === repoPath);
+      expect(entry).toBeDefined();
+      expect(entry!.workspaceCount).toBe(1);
     });
   });
 });

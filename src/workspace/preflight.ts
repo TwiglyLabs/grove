@@ -73,10 +73,10 @@ export function validateRepoPaths(
   return errors;
 }
 
-export function preflightCreate(
+export async function preflightCreate(
   sources: Array<{ path: string; role: 'parent' | 'child'; name?: string }>,
   branch: string,
-): PreflightResult | PreflightError {
+): Promise<PreflightResult | PreflightError> {
   const errors: string[] = [];
 
   // Validate branch name
@@ -149,7 +149,7 @@ export function preflightCreate(
   const workspaceId = `${projectName}-${branch}`;
 
   // Check no existing active workspace with same ID
-  const existing = readWorkspaceState(workspaceId);
+  const existing = await readWorkspaceState(workspaceId);
   if (existing && existing.status !== 'failed') {
     errors.push(`Workspace '${workspaceId}' already exists with status '${existing.status}'`);
   }

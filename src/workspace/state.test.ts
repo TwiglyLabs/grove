@@ -73,7 +73,7 @@ describe('workspace state', () => {
       const state = makeState();
       await writeWorkspaceState(state);
 
-      const loaded = readWorkspaceState('myproject-feature-x');
+      const loaded = await readWorkspaceState('myproject-feature-x');
       expect(loaded).toEqual(state);
     });
 
@@ -84,7 +84,7 @@ describe('workspace state', () => {
       const updated = makeState({ status: 'closing', updatedAt: '2026-02-14T10:00:00Z' });
       await writeWorkspaceState(updated);
 
-      const loaded = readWorkspaceState('myproject-feature-x');
+      const loaded = await readWorkspaceState('myproject-feature-x');
       expect(loaded?.status).toBe('closing');
     });
 
@@ -101,53 +101,66 @@ describe('workspace state', () => {
       });
       await writeWorkspaceState(state);
 
-      const loaded = readWorkspaceState('myproject-feature-x');
+      const loaded = await readWorkspaceState('myproject-feature-x');
       expect(loaded?.sync).toEqual(state.sync);
     });
   });
 
   describe('readWorkspaceState', () => {
-    it('returns null for non-existent state', () => {
-      expect(readWorkspaceState('nonexistent')).toBeNull();
+    it('returns null for non-existent state', async () => {
+      expect(await readWorkspaceState('nonexistent')).toBeNull();
     });
 
-    it('returns null for invalid JSON', () => {
+    it('returns null for invalid JSON', async () => {
       const filePath = join(testDir, '.grove', 'workspaces', 'bad.json');
       writeFileSync(filePath, 'not valid json', 'utf-8');
-      expect(readWorkspaceState('bad')).toBeNull();
+      expect(await readWorkspaceState('bad')).toBeNull();
     });
 
-    it('returns null for invalid schema', () => {
+    it('returns null for invalid schema', async () => {
       const filePath = join(testDir, '.grove', 'workspaces', 'invalid.json');
       writeFileSync(filePath, JSON.stringify({ version: 2, wrong: true }), 'utf-8');
-      expect(readWorkspaceState('invalid')).toBeNull();
+      expect(await readWorkspaceState('invalid')).toBeNull();
     });
   });
 
   describe('deleteWorkspaceState', () => {
     it('deletes existing state file', async () => {
       await writeWorkspaceState(makeState());
-      expect(readWorkspaceState('myproject-feature-x')).not.toBeNull();
+      expect(await readWorkspaceState('myproject-feature-x')).not.toBeNull();
 
-      deleteWorkspaceState('myproject-feature-x');
-      expect(readWorkspaceState('myproject-feature-x')).toBeNull();
+      await deleteWorkspaceState('myproject-feature-x');
+      expect(await readWorkspaceState('myproject-feature-x')).toBeNull();
     });
 
-    it('does nothing for non-existent state', () => {
-      expect(() => deleteWorkspaceState('nonexistent')).not.toThrow();
+    it('does nothing for non-existent state', async () => {
+      await expect(deleteWorkspaceState('nonexistent')).resolves.toBeUndefined();
+    });
+
+    it('handles file deleted between access check and lock acquisition', async () => {
+      // Write then immediately delete the raw file before deleteWorkspaceState runs.
+      // This exercises the catch block where lock acquisition fails because the file is gone.
+      await writeWorkspaceState(makeState({ id: 'ephemeral' }));
+      const filePath = join(testDir, '.grove', 'workspaces', 'ephemeral.json');
+
+      // Delete the underlying file to simulate a race
+      unlinkSync(filePath);
+
+      // Should not throw — the fallback access+unlink path handles this gracefully
+      await expect(deleteWorkspaceState('ephemeral')).resolves.toBeUndefined();
     });
   });
 
   describe('listWorkspaceStates', () => {
-    it('returns empty array when no states exist', () => {
-      expect(listWorkspaceStates()).toEqual([]);
+    it('returns empty array when no states exist', async () => {
+      expect(await listWorkspaceStates()).toEqual([]);
     });
 
     it('returns all valid states', async () => {
       await writeWorkspaceState(makeState({ id: 'proj-a', branch: 'a' }));
       await writeWorkspaceState(makeState({ id: 'proj-b', branch: 'b' }));
 
-      const states = listWorkspaceStates();
+      const states = await listWorkspaceStates();
       expect(states).toHaveLength(2);
       expect(states.map(s => s.id).sort()).toEqual(['proj-a', 'proj-b']);
     });
@@ -157,7 +170,7 @@ describe('workspace state', () => {
       const badPath = join(testDir, '.grove', 'workspaces', 'bad.json');
       writeFileSync(badPath, 'invalid json', 'utf-8');
 
-      const states = listWorkspaceStates();
+      const states = await listWorkspaceStates();
       expect(states).toHaveLength(1);
       expect(states[0].id).toBe('valid');
     });
@@ -167,14 +180,14 @@ describe('workspace state', () => {
     it('finds workspace matching branch', async () => {
       await writeWorkspaceState(makeState({ id: 'proj-feature', branch: 'feature' }));
 
-      const found = findWorkspaceByBranch('feature');
+      const found = await findWorkspaceByBranch('feature');
       expect(found).not.toBeNull();
       expect(found?.id).toBe('proj-feature');
     });
 
     it('returns null when no match', async () => {
       await writeWorkspaceState(makeState({ id: 'proj-other', branch: 'other' }));
-      expect(findWorkspaceByBranch('nonexistent')).toBeNull();
+      expect(await findWorkspaceByBranch('nonexistent')).toBeNull();
     });
   });
 });

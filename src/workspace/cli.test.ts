@@ -10,6 +10,7 @@ const mockSyncWorkspace = vi.hoisted(() => vi.fn());
 const mockCloseWorkspace = vi.hoisted(() => vi.fn());
 const mockReadWorkspaceState = vi.hoisted(() => vi.fn());
 const mockFindWorkspaceByBranch = vi.hoisted(() => vi.fn());
+const mockDescribeWorkspace = vi.hoisted(() => vi.fn());
 
 // Mock output functions
 const mockPrintSuccess = vi.hoisted(() => vi.fn());
@@ -38,6 +39,10 @@ vi.mock('./sync.js', async (importOriginal) => {
 
 vi.mock('./close.js', () => ({
   closeWorkspace: mockCloseWorkspace,
+}));
+
+vi.mock('./api.js', () => ({
+  describe: mockDescribeWorkspace,
 }));
 
 vi.mock('./state.js', () => ({
@@ -133,7 +138,7 @@ describe('workspaceCommand', () => {
         { id: 'ws-1', branch: 'feature-1', root: '/path/1', status: 'active' },
         { id: 'ws-2', branch: 'feature-2', root: '/path/2', status: 'active' },
       ];
-      mockListWorkspaces.mockReturnValue(workspaces);
+      mockListWorkspaces.mockResolvedValue(workspaces);
 
       await workspaceCommand(['list']);
 
@@ -145,7 +150,7 @@ describe('workspaceCommand', () => {
       const workspaces = [
         { id: 'ws-1', branch: 'feature-1', root: '/path/1', status: 'active' },
       ];
-      mockListWorkspaces.mockReturnValue(workspaces);
+      mockListWorkspaces.mockResolvedValue(workspaces);
 
       await workspaceCommand(['list', '--json']);
 
@@ -154,7 +159,7 @@ describe('workspaceCommand', () => {
     });
 
     it('should handle empty workspace list', async () => {
-      mockListWorkspaces.mockReturnValue([]);
+      mockListWorkspaces.mockResolvedValue([]);
 
       await workspaceCommand(['list']);
 
@@ -163,9 +168,7 @@ describe('workspaceCommand', () => {
     });
 
     it('should handle list failure', async () => {
-      mockListWorkspaces.mockImplementation(() => {
-        throw new Error('Failed to list');
-      });
+      mockListWorkspaces.mockRejectedValue(new Error('Failed to list'));
 
       await workspaceCommand(['list']);
 
@@ -176,7 +179,7 @@ describe('workspaceCommand', () => {
   describe('status subcommand', () => {
     it('should call getWorkspaceStatus with branch name', async () => {
       const status = { id: 'ws-1', branch: 'feature-branch', status: 'active', repos: [] };
-      mockGetWorkspaceStatus.mockReturnValue(status);
+      mockGetWorkspaceStatus.mockResolvedValue(status);
 
       await workspaceCommand(['status', 'feature-branch']);
 
@@ -186,7 +189,7 @@ describe('workspaceCommand', () => {
 
     it('should call getWorkspaceStatus without branch (current workspace)', async () => {
       const status = { id: 'ws-1', branch: 'current-branch', status: 'active', repos: [] };
-      mockGetWorkspaceStatus.mockReturnValue(status);
+      mockGetWorkspaceStatus.mockResolvedValue(status);
 
       await workspaceCommand(['status']);
 
@@ -196,7 +199,7 @@ describe('workspaceCommand', () => {
 
     it('should call jsonSuccess when --json flag is provided', async () => {
       const status = { id: 'ws-1', branch: 'feature-branch', status: 'active', repos: [] };
-      mockGetWorkspaceStatus.mockReturnValue(status);
+      mockGetWorkspaceStatus.mockResolvedValue(status);
 
       await workspaceCommand(['status', 'feature-branch', '--json']);
 
@@ -205,9 +208,7 @@ describe('workspaceCommand', () => {
     });
 
     it('should handle status failure', async () => {
-      mockGetWorkspaceStatus.mockImplementation(() => {
-        throw new Error('Workspace not found');
-      });
+      mockGetWorkspaceStatus.mockRejectedValue(new Error('Workspace not found'));
 
       await workspaceCommand(['status', 'feature-branch']);
 
@@ -337,8 +338,8 @@ describe('workspaceCommand', () => {
 
   describe('switch subcommand', () => {
     it('should print workspace root path', async () => {
-      mockReadWorkspaceState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue({
+      mockReadWorkspaceState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue({
         id: 'myproject-feature-x',
         root: '/tmp/worktrees/myproject/feature-x',
         branch: 'feature-x',
@@ -350,7 +351,7 @@ describe('workspaceCommand', () => {
     });
 
     it('should find workspace by ID first', async () => {
-      mockReadWorkspaceState.mockReturnValue({
+      mockReadWorkspaceState.mockResolvedValue({
         id: 'myproject-feature-x',
         root: '/tmp/worktrees/myproject/feature-x',
         branch: 'feature-x',
@@ -364,8 +365,8 @@ describe('workspaceCommand', () => {
     });
 
     it('should return JSON when --json flag is provided', async () => {
-      mockReadWorkspaceState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue({
+      mockReadWorkspaceState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue({
         id: 'myproject-feature-x',
         root: '/tmp/worktrees/myproject/feature-x',
         branch: 'feature-x',
@@ -383,8 +384,8 @@ describe('workspaceCommand', () => {
     });
 
     it('should print error when workspace not found', async () => {
-      mockReadWorkspaceState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(null);
+      mockReadWorkspaceState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(null);
 
       await workspaceCommand(['switch', 'nonexistent']);
 
@@ -392,12 +393,81 @@ describe('workspaceCommand', () => {
     });
 
     it('should call jsonError when workspace not found with --json', async () => {
-      mockReadWorkspaceState.mockReturnValue(null);
-      mockFindWorkspaceByBranch.mockReturnValue(null);
+      mockReadWorkspaceState.mockResolvedValue(null);
+      mockFindWorkspaceByBranch.mockResolvedValue(null);
 
       await workspaceCommand(['switch', 'nonexistent', '--json']);
 
       expect(mockJsonError).toHaveBeenCalledWith("No workspace found for 'nonexistent'");
+      expect(mockPrintError).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('describe subcommand', () => {
+    const descriptor = {
+      workspace: {
+        id: 'project-feature-x',
+        branch: 'feature-x',
+        repos: [
+          { name: 'project', path: '/tmp/wt/project/feature-x', role: 'parent' },
+        ],
+      },
+      services: [
+        { name: 'api', url: 'http://localhost:3000', port: 3000 },
+      ],
+      frontends: [
+        { name: 'web', url: 'http://localhost:5173', cwd: '/tmp/wt/project/feature-x/web' },
+      ],
+      testing: { commands: { ios: 'xcodebuild test' } },
+      shell: { targets: ['api', 'auth'] },
+    };
+
+    it('should call describe with branch/id and print text output', async () => {
+      mockDescribeWorkspace.mockResolvedValue(descriptor);
+
+      await workspaceCommand(['describe', 'feature-x']);
+
+      expect(mockDescribeWorkspace).toHaveBeenCalledWith('feature-x');
+      expect(console.log).toHaveBeenCalled();
+    });
+
+    it('should call jsonSuccess when --json flag is provided', async () => {
+      mockDescribeWorkspace.mockResolvedValue(descriptor);
+
+      await workspaceCommand(['describe', 'feature-x', '--json']);
+
+      expect(mockDescribeWorkspace).toHaveBeenCalledWith('feature-x');
+      expect(mockJsonSuccess).toHaveBeenCalledWith(descriptor);
+    });
+
+    it('should print error when branch/id is missing', async () => {
+      await workspaceCommand(['describe']);
+
+      expect(mockDescribeWorkspace).not.toHaveBeenCalled();
+      expect(mockPrintError).toHaveBeenCalledWith('Usage: grove workspace describe <branch|id>');
+    });
+
+    it('should call jsonError when branch/id is missing with --json', async () => {
+      await workspaceCommand(['describe', '--json']);
+
+      expect(mockDescribeWorkspace).not.toHaveBeenCalled();
+      expect(mockJsonError).toHaveBeenCalledWith('Usage: grove workspace describe <branch|id>');
+    });
+
+    it('should handle describe failure', async () => {
+      mockDescribeWorkspace.mockRejectedValue(new Error('Workspace not found'));
+
+      await workspaceCommand(['describe', 'nonexistent']);
+
+      expect(mockPrintError).toHaveBeenCalledWith('Workspace not found');
+    });
+
+    it('should call jsonError when describe fails with --json', async () => {
+      mockDescribeWorkspace.mockRejectedValue(new Error('Workspace not found'));
+
+      await workspaceCommand(['describe', 'nonexistent', '--json']);
+
+      expect(mockJsonError).toHaveBeenCalledWith('Workspace not found');
       expect(mockPrintError).not.toHaveBeenCalled();
     });
   });

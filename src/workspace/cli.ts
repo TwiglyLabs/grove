@@ -99,7 +99,7 @@ async function handleCreate(args: string[], ctx: WorkspaceContext): Promise<void
 
 async function handleList(ctx: WorkspaceContext): Promise<void> {
   try {
-    const workspaces = listWorkspaces();
+    const workspaces = await listWorkspaces();
     if (ctx.json) {
       jsonSuccess({ workspaces });
     } else {
@@ -122,7 +122,7 @@ async function handleStatus(args: string[], ctx: WorkspaceContext): Promise<void
   const branchOrId = args.find(a => !a.startsWith('--'));
 
   try {
-    const status = getWorkspaceStatus(branchOrId);
+    const status = await getWorkspaceStatus(branchOrId);
     if (ctx.json) {
       jsonSuccess(status);
     } else {
@@ -220,7 +220,7 @@ async function handleSwitch(args: string[], ctx: WorkspaceContext): Promise<void
   }
 
   try {
-    const state = readWorkspaceState(branch) ?? findWorkspaceByBranch(branch);
+    const state = await readWorkspaceState(branch) ?? await findWorkspaceByBranch(branch);
     if (!state) {
       throw new Error(`No workspace found for '${branch}'`);
     }
@@ -245,7 +245,7 @@ async function handleDescribe(args: string[], ctx: WorkspaceContext): Promise<vo
   }
 
   try {
-    const descriptor = describeWorkspace(branchOrId as import('../shared/identity.js').WorkspaceId);
+    const descriptor = await describeWorkspace(branchOrId as import('../shared/identity.js').WorkspaceId);
     if (ctx.json) {
       jsonSuccess(descriptor);
     } else {

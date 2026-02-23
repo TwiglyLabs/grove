@@ -31,7 +31,7 @@ export async function cloneSimulator(repo: RepoId): Promise<SimulatorInfo> {
     throw new Error('No simulator configuration found in .grove.yaml');
   }
 
-  const state = readState(config);
+  const state = await readState(config);
   const branch = state?.branch ?? 'main';
 
   const result = await internalEnsure(config.simulator, branch);
@@ -100,7 +100,7 @@ export async function connectMetro(repo: RepoId, udid: string): Promise<void> {
     throw new Error('No simulator configuration found in .grove.yaml');
   }
 
-  const state = readState(config);
+  const state = await readState(config);
   if (!state) {
     throw new EnvironmentNotRunningError();
   }

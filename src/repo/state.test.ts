@@ -172,6 +172,38 @@ describe('repo registry state', () => {
         "Name 'myrepo' is already registered for a different path",
       );
     });
+
+    it('backfills IDs on pre-existing entries without IDs', async () => {
+      // Seed registry with an entry that has no ID (pre-migration data)
+      const data = {
+        version: 1,
+        repos: [
+          { name: 'old-repo', path: '/home/user/old-repo', addedAt: '2026-02-14T10:00:00Z' },
+        ],
+      };
+      writeFileSync(join(testDir, '.grove', 'repos.json'), JSON.stringify(data), 'utf-8');
+
+      // addRepo should backfill the old entry's ID while adding the new one
+      await addRepo('new-repo', '/home/user/new-repo');
+
+      const registry = await readRegistry();
+      expect(registry.repos).toHaveLength(2);
+
+      // Old entry should now have an ID
+      const oldEntry = registry.repos.find(r => r.name === 'old-repo');
+      expect(oldEntry).toBeDefined();
+      expect(oldEntry!.id).toBeDefined();
+      expect(oldEntry!.id).toMatch(/^repo_/);
+
+      // New entry should also have an ID
+      const newEntry = registry.repos.find(r => r.name === 'new-repo');
+      expect(newEntry).toBeDefined();
+      expect(newEntry!.id).toBeDefined();
+      expect(newEntry!.id).toMatch(/^repo_/);
+
+      // IDs should differ
+      expect(oldEntry!.id).not.toBe(newEntry!.id);
+    });
   });
 
   describe('removeRepo', () => {

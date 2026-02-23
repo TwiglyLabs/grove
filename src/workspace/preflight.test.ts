@@ -31,18 +31,18 @@ describe('preflightCreate', () => {
     mockValidateWorktreeBasePath.mockReturnValue(null);
   });
 
-  it('all repos valid → returns ok', () => {
+  it('all repos valid → returns ok', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockReturnValue('main');
     mockBranchExists.mockReturnValue(false);
-    mockReadWorkspaceState.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
 
     const sources = [
       { path: '/repos/project', role: 'parent' as const },
       { path: '/repos/lib', role: 'child' as const },
     ];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -64,7 +64,7 @@ describe('preflightCreate', () => {
     });
   });
 
-  it('one source not a git repo → error', () => {
+  it('one source not a git repo → error', async () => {
     mockIsGitRepo.mockImplementation((path: string) => path !== '/not/a/repo');
     mockGetCurrentBranch.mockReturnValue('main');
     mockBranchExists.mockReturnValue(false);
@@ -74,7 +74,7 @@ describe('preflightCreate', () => {
       { path: '/not/a/repo', role: 'child' as const },
     ];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -83,20 +83,20 @@ describe('preflightCreate', () => {
     expect(result.errors[0]).toBe('Not a git repository: /not/a/repo');
   });
 
-  it('branch already exists in one repo → error', () => {
+  it('branch already exists in one repo → error', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockReturnValue('main');
     mockBranchExists.mockImplementation((path: string, branch: string) => {
       return path === '/repos/lib' && branch === 'feature-x';
     });
-    mockReadWorkspaceState.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
 
     const sources = [
       { path: '/repos/project', role: 'parent' as const },
       { path: '/repos/lib', role: 'child' as const },
     ];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -105,7 +105,7 @@ describe('preflightCreate', () => {
     expect(result.errors[0]).toContain("Branch 'feature-x' already exists in lib");
   });
 
-  it('grouped workspace with repos on different branches → error with details', () => {
+  it('grouped workspace with repos on different branches → error with details', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockImplementation((path: string) => {
       if (path === '/repos/project') return 'main';
@@ -113,14 +113,14 @@ describe('preflightCreate', () => {
       return 'main';
     });
     mockBranchExists.mockReturnValue(false);
-    mockReadWorkspaceState.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
 
     const sources = [
       { path: '/repos/project', role: 'parent' as const },
       { path: '/repos/lib', role: 'child' as const },
     ];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -131,11 +131,11 @@ describe('preflightCreate', () => {
     expect(result.errors[0]).toContain('lib: develop');
   });
 
-  it('existing active workspace → error', () => {
+  it('existing active workspace → error', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockReturnValue('main');
     mockBranchExists.mockReturnValue(false);
-    mockReadWorkspaceState.mockReturnValue({
+    mockReadWorkspaceState.mockResolvedValue({
       version: 1,
       id: 'project-feature-x',
       status: 'active',
@@ -150,7 +150,7 @@ describe('preflightCreate', () => {
 
     const sources = [{ path: '/repos/project', role: 'parent' as const }];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -159,11 +159,11 @@ describe('preflightCreate', () => {
     expect(result.errors[0]).toContain("Workspace 'project-feature-x' already exists with status 'active'");
   });
 
-  it('existing failed workspace → ok (allowed)', () => {
+  it('existing failed workspace → ok (allowed)', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockReturnValue('main');
     mockBranchExists.mockReturnValue(false);
-    mockReadWorkspaceState.mockReturnValue({
+    mockReadWorkspaceState.mockResolvedValue({
       version: 1,
       id: 'project-feature-x',
       status: 'failed',
@@ -178,7 +178,7 @@ describe('preflightCreate', () => {
 
     const sources = [{ path: '/repos/project', role: 'parent' as const }];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -186,15 +186,15 @@ describe('preflightCreate', () => {
     expect(result.workspaceId).toBe('project-feature-x');
   });
 
-  it('simple workspace (single source) skips branch consistency check', () => {
+  it('simple workspace (single source) skips branch consistency check', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockReturnValue('develop');
     mockBranchExists.mockReturnValue(false);
-    mockReadWorkspaceState.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
 
     const sources = [{ path: '/repos/project', role: 'parent' as const }];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -202,11 +202,11 @@ describe('preflightCreate', () => {
     expect(result.sources[0].parentBranch).toBe('develop');
   });
 
-  it('all repos on same branch → ok', () => {
+  it('all repos on same branch → ok', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockReturnValue('main');
     mockBranchExists.mockReturnValue(false);
-    mockReadWorkspaceState.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
 
     const sources = [
       { path: '/repos/project', role: 'parent' as const },
@@ -214,7 +214,7 @@ describe('preflightCreate', () => {
       { path: '/repos/cloud', role: 'child' as const },
     ];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -223,18 +223,18 @@ describe('preflightCreate', () => {
     expect(result.sources.every(s => s.parentBranch === 'main')).toBe(true);
   });
 
-  it('uses custom name when provided', () => {
+  it('uses custom name when provided', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockReturnValue('main');
     mockBranchExists.mockReturnValue(false);
-    mockReadWorkspaceState.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
 
     const sources = [
       { path: '/repos/project', role: 'parent' as const },
       { path: '/repos/library-name', role: 'child' as const, name: 'lib' },
     ];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -242,21 +242,21 @@ describe('preflightCreate', () => {
     expect(result.sources[1].name).toBe('lib');
   });
 
-  it('detached HEAD in source repo → error', () => {
+  it('detached HEAD in source repo → error', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockImplementation((path: string) => {
       if (path === '/repos/lib') return '';
       return 'main';
     });
     mockBranchExists.mockReturnValue(false);
-    mockReadWorkspaceState.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
 
     const sources = [
       { path: '/repos/project', role: 'parent' as const },
       { path: '/repos/lib', role: 'child' as const },
     ];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -266,16 +266,16 @@ describe('preflightCreate', () => {
     expect(result.errors[0]).toContain('lib');
   });
 
-  it('worktree base path not writable → error', () => {
+  it('worktree base path not writable → error', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockReturnValue('main');
     mockBranchExists.mockReturnValue(false);
-    mockReadWorkspaceState.mockReturnValue(null);
+    mockReadWorkspaceState.mockResolvedValue(null);
     mockValidateWorktreeBasePath.mockReturnValue('Worktree base path is not writable: /readonly/path');
 
     const sources = [{ path: '/repos/project', role: 'parent' as const }];
 
-    const result = preflightCreate(sources, 'feature-x');
+    const result = await preflightCreate(sources, 'feature-x');
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -284,10 +284,10 @@ describe('preflightCreate', () => {
     expect(result.errors[0]).toContain('not writable');
   });
 
-  it('invalid branch name → error before git checks', () => {
+  it('invalid branch name → error before git checks', async () => {
     const sources = [{ path: '/repos/project', role: 'parent' as const }];
 
-    const result = preflightCreate(sources, 'feature branch');
+    const result = await preflightCreate(sources, 'feature branch');
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
