@@ -44,6 +44,8 @@ vi.mock('./config.js', () => ({
 vi.mock('./preflight.js', () => ({
   preflightCreate: mockPreflightCreate,
   validateRepoPaths: mockValidateRepoPaths,
+  toWorkspaceId: (projectName: string, branch: string) =>
+    `${projectName}-${branch.replace(/\//g, '--')}`,
 }));
 
 vi.mock('./git.js', () => ({

@@ -83,7 +83,7 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
       if (!canFFMerge(repo.source, repo.parentBranch, state.branch)) {
         restoreBranches();
         throw new Error(
-          `Cannot fast-forward '${repo.name}' after sync. Source repo may have local commits not on origin.`,
+          `Cannot fast-forward '${repo.name}' after sync.`,
         );
       }
     }

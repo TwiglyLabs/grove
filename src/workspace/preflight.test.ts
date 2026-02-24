@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { preflightCreate, validateRepoPaths, validateBranchName } from './preflight.js';
+import { preflightCreate, validateRepoPaths, validateBranchName, toWorkspaceId } from './preflight.js';
 import type { SourceRepo } from './preflight.js';
 
 // Mock dependencies using vi.hoisted
@@ -266,6 +266,22 @@ describe('preflightCreate', () => {
     expect(result.errors[0]).toContain('lib');
   });
 
+  it('slashed branch name → workspace ID replaces / with --', async () => {
+    mockIsGitRepo.mockReturnValue(true);
+    mockGetCurrentBranch.mockReturnValue('main');
+    mockBranchExists.mockReturnValue(false);
+    mockReadWorkspaceState.mockResolvedValue(null);
+
+    const sources = [{ path: '/repos/project', role: 'parent' as const }];
+
+    const result = await preflightCreate(sources, 'plan/dag-viewer');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.workspaceId).toBe('project-plan--dag-viewer');
+  });
+
   it('worktree base path not writable → error', async () => {
     mockIsGitRepo.mockReturnValue(true);
     mockGetCurrentBranch.mockReturnValue('main');
@@ -342,6 +358,20 @@ describe('validateRepoPaths', () => {
   it('reports multiple errors at once', () => {
     const errors = validateRepoPaths(['../bad', '/absolute', 'ok', 'ok']);
     expect(errors).toHaveLength(3); // .., absolute, duplicate
+  });
+});
+
+describe('toWorkspaceId', () => {
+  it('simple branch → project-branch', () => {
+    expect(toWorkspaceId('project', 'feature-x')).toBe('project-feature-x');
+  });
+
+  it('slashed branch → replaces / with --', () => {
+    expect(toWorkspaceId('twiglylabs', 'plan/dag-viewer')).toBe('twiglylabs-plan--dag-viewer');
+  });
+
+  it('multiple slashes → all replaced', () => {
+    expect(toWorkspaceId('project', 'a/b/c')).toBe('project-a--b--c');
   });
 });
 

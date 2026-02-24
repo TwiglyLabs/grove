@@ -290,7 +290,7 @@ describe('closeWorkspace', () => {
       mockSyncWorkspace.mockResolvedValue({ synced: ['myproject', 'public'], details: [] });
 
       await expect(closeWorkspace('feature-x', 'merge')).rejects.toThrow(
-        "Cannot fast-forward 'public' after sync. Source repo may have local commits not on origin."
+        "Cannot fast-forward 'public' after sync."
       );
 
       // Workspace should NOT have been set to 'closing'

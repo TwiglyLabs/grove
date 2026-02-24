@@ -1,7 +1,7 @@
 import { join, basename, resolve } from 'path';
 import { execSync } from 'child_process';
 import { loadWorkspaceConfig } from './config.js';
-import { preflightCreate, validateRepoPaths } from './preflight.js';
+import { preflightCreate, validateRepoPaths, toWorkspaceId } from './preflight.js';
 import { createWorktree, removeWorktree, deleteBranch, getWorktreeBasePath } from './git.js';
 import { writeWorkspaceState, readWorkspaceState, deleteWorkspaceState } from './state.js';
 import { runSetupCommands, runHook } from './setup.js';
@@ -29,7 +29,7 @@ export async function createWorkspace(
   const projectName = basename(sourceRoot);
 
   // Check for failed state and clean up
-  const workspaceId = `${projectName}-${branch}`;
+  const workspaceId = toWorkspaceId(projectName, branch);
   const existingState = await readWorkspaceState(workspaceId);
   if (existingState?.status === 'failed') {
     await cleanupFailed(existingState);

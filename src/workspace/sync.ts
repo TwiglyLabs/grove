@@ -1,5 +1,5 @@
 import { readWorkspaceState, writeWorkspaceState, findWorkspaceByBranch } from './state.js';
-import { fetch, merge, isMergeInProgress, hasDirtyWorkingTree } from './git.js';
+import { merge, isMergeInProgress, hasDirtyWorkingTree } from './git.js';
 import type { WorkspaceState } from './types.js';
 
 export interface SyncRepoDetail {
@@ -87,9 +87,8 @@ export async function syncWorkspace(branch: string): Promise<SyncResult> {
       continue;
     }
 
-    // Status is 'pending' — fetch and merge
-    fetch(repo.worktree);
-    const mergeResult = merge(repo.worktree, `origin/${repo.parentBranch}`);
+    // Status is 'pending' — merge local parentBranch
+    const mergeResult = merge(repo.worktree, repo.parentBranch);
 
     if (mergeResult.ok) {
       state.sync.repos[repo.name] = 'synced';

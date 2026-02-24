@@ -5,7 +5,6 @@ import type { WorkspaceState } from './types.js';
 const mockReadWorkspaceState = vi.hoisted(() => vi.fn());
 const mockWriteWorkspaceState = vi.hoisted(() => vi.fn());
 const mockFindWorkspaceByBranch = vi.hoisted(() => vi.fn());
-const mockFetch = vi.hoisted(() => vi.fn());
 const mockMerge = vi.hoisted(() => vi.fn());
 const mockIsMergeInProgress = vi.hoisted(() => vi.fn());
 const mockHasDirtyWorkingTree = vi.hoisted(() => vi.fn());
@@ -17,7 +16,6 @@ vi.mock('./state.js', () => ({
 }));
 
 vi.mock('./git.js', () => ({
-  fetch: mockFetch,
   merge: mockMerge,
   isMergeInProgress: mockIsMergeInProgress,
   hasDirtyWorkingTree: mockHasDirtyWorkingTree,
@@ -71,11 +69,8 @@ describe('syncWorkspace', () => {
     const result = await syncWorkspace('feature-x');
 
     expect(result.synced).toEqual(['myproject', 'public']);
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(mockFetch).toHaveBeenCalledWith('/tmp/worktrees/myproject/feature-x');
-    expect(mockFetch).toHaveBeenCalledWith('/tmp/worktrees/myproject/feature-x/public');
-    expect(mockMerge).toHaveBeenCalledWith('/tmp/worktrees/myproject/feature-x', 'origin/main');
-    expect(mockMerge).toHaveBeenCalledWith('/tmp/worktrees/myproject/feature-x/public', 'origin/main');
+    expect(mockMerge).toHaveBeenCalledWith('/tmp/worktrees/myproject/feature-x', 'main');
+    expect(mockMerge).toHaveBeenCalledWith('/tmp/worktrees/myproject/feature-x/public', 'main');
 
     // Verify sync state was initialized, updated for each repo, and cleared
     // Expected: 1 init + 2 repo updates + 1 clear = 4 calls
@@ -136,7 +131,6 @@ describe('syncWorkspace', () => {
 
     expect(result.synced).toEqual(['myproject', 'public']);
     expect(mockMerge).not.toHaveBeenCalled(); // No new merges needed
-    expect(mockFetch).not.toHaveBeenCalled(); // No new fetches needed
 
     // Verify sync state was cleared
     const finalCall = mockWriteWorkspaceState.mock.calls[1][0];
@@ -281,9 +275,7 @@ describe('syncWorkspace', () => {
     const result = await syncWorkspace('feature-x');
 
     expect(result.synced).toEqual(['myproject', 'public']);
-    // Only one fetch/merge for the pending repo
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith('/tmp/worktrees/myproject/feature-x/public');
+    // Only one merge for the pending repo
     expect(mockMerge).toHaveBeenCalledTimes(1);
   });
 });

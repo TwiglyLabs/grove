@@ -3,6 +3,15 @@ import { isGitRepo, getCurrentBranch, branchExists, getWorktreeBasePath, validat
 import { readWorkspaceState } from './state.js';
 
 /**
+ * Build a filesystem-safe workspace ID from project name and branch.
+ * Replaces `/` with `--` so branch names like `plan/dag-viewer` don't
+ * create nested subdirectories in the state file path.
+ */
+export function toWorkspaceId(projectName: string, branch: string): string {
+  return `${projectName}-${branch.replace(/\//g, '--')}`;
+}
+
+/**
  * Validate branch name for git compatibility.
  * Rejects names with characters that git doesn't allow.
  */
@@ -146,7 +155,7 @@ export async function preflightCreate(
   // Determine workspace ID
   const parentSource = sources.find(s => s.role === 'parent') || sources[0];
   const projectName = basename(parentSource.path);
-  const workspaceId = `${projectName}-${branch}`;
+  const workspaceId = toWorkspaceId(projectName, branch);
 
   // Check no existing active workspace with same ID
   const existing = await readWorkspaceState(workspaceId);
