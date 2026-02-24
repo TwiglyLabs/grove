@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { RepoId, WorkspaceId } from '../shared/identity.js';
 import type { GroveError } from '../shared/errors.js';
+import type { Logger } from '@twiglylabs/log';
 
 // --- Zod schemas for persisted state ---
 
@@ -65,6 +66,7 @@ export interface CreateOptions {
   from: RepoId;
   repos?: RepoRef[];
   signal?: AbortSignal;
+  logger?: Logger;
 }
 
 export interface CreateResult {
@@ -104,6 +106,7 @@ export interface WorkspaceStatusResult {
 
 export interface SyncOptions {
   signal?: AbortSignal;
+  logger?: Logger;
 }
 
 export interface SyncResult {
@@ -116,6 +119,7 @@ export type CloseMode = 'merge' | 'discard';
 export interface CloseOptions {
   dryRun?: boolean;
   signal?: AbortSignal;
+  logger?: Logger;
 }
 
 export interface DryRunResult {

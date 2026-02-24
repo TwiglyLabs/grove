@@ -40,7 +40,7 @@ export type { WorkspaceEvents } from './workspace/types.js';
 export type { TestEvents } from './testing/types.js';
 
 // Repo types
-export type { RepoEntry, RepoListEntry } from './repo/types.js';
+export type { RepoEntry, RepoListEntry, RepoAddOptions, RepoRemoveOptions } from './repo/types.js';
 
 // Environment types
 export type {

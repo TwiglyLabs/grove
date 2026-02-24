@@ -1,5 +1,14 @@
 import { z } from 'zod';
 import type { RepoId } from '../shared/identity.js';
+import type { Logger } from '@twiglylabs/log';
+
+export interface RepoAddOptions {
+  logger?: Logger;
+}
+
+export interface RepoRemoveOptions {
+  logger?: Logger;
+}
 
 export const RepoEntrySchema = z.object({
   id: z.string(),

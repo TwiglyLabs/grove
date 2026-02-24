@@ -43,6 +43,7 @@ import type {
 import { loadConfig } from '../config.js';
 import { readState as readEnvState } from '../environment/state.js';
 import { sanitizeBranchName } from './sanitize.js';
+import { noopLogger } from '@twiglylabs/log';
 
 /**
  * Create a workspace with git worktrees for the parent repo and any child repos.
@@ -52,6 +53,7 @@ export async function create(
   options: CreateOptions,
   _events?: WorkspaceEvents,
 ): Promise<CreateResult> {
+  const log = (options.logger ?? noopLogger).child('grove:workspace');
   const repoPath = await resolveRepoPath(options.from);
 
   // Resolve repo refs if provided (repos: [] means "no children, override config")
@@ -62,10 +64,14 @@ export async function create(
       : [];
   }
 
+  log.info('creating workspace', { branch, from: repoPath });
+
   const result = await internalCreate(branch, {
     from: repoPath,
     ...(childRepos !== undefined ? { childRepos } : {}),
   });
+
+  log.info('workspace created', { id: result.id, branch: result.branch, repos: result.repos });
 
   return {
     id: asWorkspaceId(result.id),
@@ -124,14 +130,19 @@ export async function getStatus(workspace: WorkspaceId): Promise<WorkspaceStatus
  */
 export async function sync(
   workspace: WorkspaceId,
-  _options?: SyncOptions,
+  options?: SyncOptions,
   _events?: WorkspaceEvents,
 ): Promise<SyncResult> {
+  const log = (options?.logger ?? noopLogger).child('grove:workspace');
+
   // Resolve workspace ID to branch for the internal function
   const state = await resolveWorkspace(workspace);
 
+  log.info('syncing workspace', { workspace, branch: state.branch });
+
   try {
     const result = await internalSync(state.branch);
+    log.info('workspace synced', { workspace, synced: result.synced });
     return {
       synced: result.synced,
       details: result.details.map(d => ({ name: d.name, status: d.status })),
@@ -153,13 +164,18 @@ export async function close(
   options?: CloseOptions,
   _events?: WorkspaceEvents,
 ): Promise<CloseResult | DryRunResult> {
+  const log = (options?.logger ?? noopLogger).child('grove:workspace');
   const state = await resolveWorkspace(workspace);
+
+  log.info('closing workspace', { workspace, branch: state.branch, mode });
 
   const result = await internalClose(state.branch, mode, { dryRun: options?.dryRun });
 
   if (options?.dryRun && result) {
     return result as DryRunResult;
   }
+
+  log.info('workspace closed', { workspace, branch: state.branch, mode });
 
   return {
     branch: state.branch,

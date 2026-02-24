@@ -16,14 +16,17 @@ import { listWorkspaceStates } from '../workspace/state.js';
 import type { RepoId } from '../shared/identity.js';
 import { asRepoId } from '../shared/identity.js';
 import { RepoNotFoundError } from '../shared/errors.js';
-import type { RepoEntry, RepoListEntry } from './types.js';
+import type { RepoEntry, RepoListEntry, RepoAddOptions, RepoRemoveOptions } from './types.js';
+import { noopLogger } from '@twiglylabs/log';
 
 /**
  * Register a repo by its filesystem path.
  * Returns the created entry with a newly assigned RepoId.
  * If the path is already registered, returns the existing entry.
  */
-export async function add(path: string): Promise<RepoEntry> {
+export async function add(path: string, options?: RepoAddOptions): Promise<RepoEntry> {
+  const log = (options?.logger ?? noopLogger).child('grove:repo');
+
   const { name, path: registeredPath, alreadyRegistered } = await internalAddRepo(
     pathToName(path),
     path,
@@ -36,23 +39,34 @@ export async function add(path: string): Promise<RepoEntry> {
     throw new Error('Failed to retrieve registered repo entry');
   }
 
-  return {
+  const result: RepoEntry = {
     id: asRepoId(entry.id),
     name: entry.name,
     path: entry.path,
     addedAt: entry.addedAt,
   };
+
+  if (alreadyRegistered) {
+    log.info('repo already registered', { name, path: registeredPath, id: result.id });
+  } else {
+    log.info('repo registered', { name, path: registeredPath, id: result.id });
+  }
+
+  return result;
 }
 
 /**
  * Unregister a repo by its ID.
  */
-export async function remove(repo: RepoId): Promise<void> {
+export async function remove(repo: RepoId, options?: RepoRemoveOptions): Promise<void> {
+  const log = (options?.logger ?? noopLogger).child('grove:repo');
+
   const entry = await get(repo);
   if (!entry) {
     throw new RepoNotFoundError(repo);
   }
   await internalRemoveRepo(entry.name);
+  log.info('repo removed', { name: entry.name, path: entry.path, id: repo });
 }
 
 /**
