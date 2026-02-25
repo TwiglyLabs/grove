@@ -66,14 +66,14 @@ Replace `execSync` in `git.ts` with `execFile` (promisified). Update all callers
 - [x] `syncWorkspace` already handles `failed` → `active` reset (sync.ts:21-29)
 - [x] Add test: merge-close from failed state completes successfully
 
-### Chunk 3: Logger injection into close/sync
+### Chunk 3: Logger injection into close/sync ✅
 - [x] Add optional `Logger` to `CloseOptions`
 - [x] Thread logger through `api.ts` → `closeWorkspace`
 - [x] Add `syncAndLog` helper that logs sync start/complete
 - [x] Log retry attempts and per-repo merge completion
-- [ ] Add logger parameter to `syncWorkspace()` and thread from callers
-- [ ] Log per-repo merge start/result inside `syncWorkspace()`
-- [ ] Add test: verify logger receives sync operation events
+- [x] Add logger parameter to `syncWorkspace()` and thread from callers
+- [x] Log per-repo merge start/result inside `syncWorkspace()`
+- [x] Add test: verify logger receives sync operation events
 
 ### Chunk 4: Async git operations — DEFERRED
 Out of scope for this plan. Tracked separately as future work.
