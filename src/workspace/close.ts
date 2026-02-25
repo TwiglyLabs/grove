@@ -1,5 +1,5 @@
 import { readWorkspaceState, writeWorkspaceState, findWorkspaceByBranch, deleteWorkspaceState } from './state.js';
-import { hasDirtyWorkingTree, checkout, mergeFFOnly, removeWorktree, deleteBranch, mergeAbort, getRepoStatus } from './git.js';
+import { hasDirtyWorkingTree, checkout, mergeFFOnly, merge, removeWorktree, deleteBranch, mergeAbort, getRepoStatus } from './git.js';
 import { syncWorkspace, ConflictError } from './sync.js';
 import type { WorkspaceState } from './types.js';
 import type { Logger } from '@twiglylabs/log';
@@ -82,11 +82,26 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
     // Checkout parent branch in source
     checkout(repo.source, repo.parentBranch);
 
-    // Fast-forward merge — retry once with re-sync if it fails (handles
-    // race where another close advanced parentBranch between sync and merge)
+    // Fast-forward merge — retry once if it fails (handles race where
+    // another close advanced parentBranch between sync and merge)
     if (!mergeFFOnly(repo.source, state.branch)) {
-      logger?.info('ff-merge failed, re-syncing and retrying', { repo: repo.name, branch: state.branch });
-      await syncAndLog(state, logger);
+      logger?.info('ff-merge failed, re-merging and retrying', { repo: repo.name, branch: state.branch });
+
+      // Targeted fix: merge latest parentBranch into this repo's worktree
+      // so the workspace branch becomes a descendant of parentBranch again.
+      // We can't call syncWorkspace here because status is 'closing' and
+      // earlier repos' worktrees may already be removed.
+      const remerge = merge(repo.worktree, repo.parentBranch);
+      if (!remerge.ok) {
+        state.status = 'failed';
+        state.updatedAt = new Date().toISOString();
+        await writeWorkspaceState(state);
+        throw new Error(
+          `Merge conflicts in '${repo.name}' during close retry. ` +
+          `Workspace is partially closed — run 'grove workspace close ${state.branch} --discard' to clean up.`,
+        );
+      }
+
       checkout(repo.source, repo.parentBranch);
 
       if (!mergeFFOnly(repo.source, state.branch)) {
@@ -121,8 +136,7 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
 async function syncAndLog(state: WorkspaceState, logger?: Logger): Promise<void> {
   logger?.debug('syncing workspace', { branch: state.branch });
   try {
-    await syncWorkspace(state.branch);
-    logger?.debug('sync complete', { branch: state.branch });
+    await syncWorkspace(state.branch, logger);
   } catch (e) {
     if (e instanceof ConflictError) {
       throw new Error(

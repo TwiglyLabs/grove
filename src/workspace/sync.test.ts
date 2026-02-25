@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { syncWorkspace, ConflictError } from './sync.js';
 import type { WorkspaceState } from './types.js';
+import type { Logger } from '@twiglylabs/log';
 
 const mockReadWorkspaceState = vi.hoisted(() => vi.fn());
 const mockWriteWorkspaceState = vi.hoisted(() => vi.fn());
@@ -277,5 +278,80 @@ describe('syncWorkspace', () => {
     expect(result.synced).toEqual(['myproject', 'public']);
     // Only one merge for the pending repo
     expect(mockMerge).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs merge operations during sync', async () => {
+    const state = createWorkspaceState();
+    mockReadWorkspaceState.mockResolvedValue(state);
+    mockMerge.mockReturnValue({ ok: true, conflicts: [] });
+
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn(),
+    };
+
+    await syncWorkspace('feature-x', logger);
+
+    // Sync start
+    expect(logger.debug).toHaveBeenCalledWith('sync started', { branch: 'feature-x', repos: 2 });
+
+    // Per-repo merge start and result
+    expect(logger.debug).toHaveBeenCalledWith('merging repo', { repo: 'myproject', parentBranch: 'main' });
+    expect(logger.debug).toHaveBeenCalledWith('merge succeeded', { repo: 'myproject' });
+    expect(logger.debug).toHaveBeenCalledWith('merging repo', { repo: 'public', parentBranch: 'main' });
+    expect(logger.debug).toHaveBeenCalledWith('merge succeeded', { repo: 'public' });
+
+    // Sync complete
+    expect(logger.debug).toHaveBeenCalledWith('sync complete', { branch: 'feature-x', synced: ['myproject', 'public'] });
+  });
+
+  it('logs merge conflicted when merge fails', async () => {
+    const state = createWorkspaceState();
+    mockReadWorkspaceState.mockResolvedValue(state);
+    mockMerge
+      .mockReturnValueOnce({ ok: true, conflicts: [] })       // parent succeeds
+      .mockReturnValueOnce({ ok: false, conflicts: ['a.ts'] }); // child conflicts
+
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn(),
+    };
+
+    await expect(syncWorkspace('feature-x', logger)).rejects.toThrow();
+
+    expect(logger.debug).toHaveBeenCalledWith('merge conflicted', { repo: 'public', conflicts: ['a.ts'] });
+  });
+
+  it('logs conflict resolved when previously conflicted repo is clean', async () => {
+    const state = createWorkspaceState({
+      sync: {
+        startedAt: '2026-02-13T14:00:00Z',
+        repos: {
+          myproject: 'synced',
+          public: 'conflicted',
+        },
+      },
+    });
+    mockReadWorkspaceState.mockResolvedValue(state);
+    mockIsMergeInProgress.mockReturnValue(false);
+    mockHasDirtyWorkingTree.mockReturnValue(false);
+
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: vi.fn(),
+    };
+
+    await syncWorkspace('feature-x', logger);
+
+    expect(logger.debug).toHaveBeenCalledWith('conflict resolved', { repo: 'public' });
   });
 });

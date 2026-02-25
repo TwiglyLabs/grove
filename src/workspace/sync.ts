@@ -1,6 +1,7 @@
 import { readWorkspaceState, writeWorkspaceState, findWorkspaceByBranch } from './state.js';
 import { merge, isMergeInProgress, hasDirtyWorkingTree } from './git.js';
 import type { WorkspaceState } from './types.js';
+import type { Logger } from '@twiglylabs/log';
 
 export interface SyncRepoDetail {
   name: string;
@@ -12,7 +13,7 @@ export interface SyncResult {
   details: SyncRepoDetail[];
 }
 
-export async function syncWorkspace(branch: string): Promise<SyncResult> {
+export async function syncWorkspace(branch: string, logger?: Logger): Promise<SyncResult> {
   const state = await readWorkspaceState(branch) ?? await findWorkspaceByBranch(branch);
   if (!state) {
     throw new Error(`No workspace found for '${branch}'`);
@@ -48,6 +49,8 @@ export async function syncWorkspace(branch: string): Promise<SyncResult> {
     return 0;
   });
 
+  logger?.debug('sync started', { branch, repos: ordered.length });
+
   for (const repo of ordered) {
     const repoSyncStatus = state.sync.repos[repo.name];
 
@@ -80,6 +83,7 @@ export async function syncWorkspace(branch: string): Promise<SyncResult> {
       }
 
       // Conflicts resolved and committed — mark as synced
+      logger?.debug('conflict resolved', { repo: repo.name });
       state.sync.repos[repo.name] = 'synced';
       await writeWorkspaceState(state);
       synced.push(repo.name);
@@ -88,14 +92,17 @@ export async function syncWorkspace(branch: string): Promise<SyncResult> {
     }
 
     // Status is 'pending' — merge local parentBranch
+    logger?.debug('merging repo', { repo: repo.name, parentBranch: repo.parentBranch });
     const mergeResult = merge(repo.worktree, repo.parentBranch);
 
     if (mergeResult.ok) {
+      logger?.debug('merge succeeded', { repo: repo.name });
       state.sync.repos[repo.name] = 'synced';
       await writeWorkspaceState(state);
       synced.push(repo.name);
       details.push({ name: repo.name, status: 'synced' });
     } else {
+      logger?.debug('merge conflicted', { repo: repo.name, conflicts: mergeResult.conflicts });
       state.sync.repos[repo.name] = 'conflicted';
       await writeWorkspaceState(state);
 
@@ -117,6 +124,8 @@ export async function syncWorkspace(branch: string): Promise<SyncResult> {
   state.sync = null;
   state.updatedAt = new Date().toISOString();
   await writeWorkspaceState(state);
+
+  logger?.debug('sync complete', { branch, synced });
 
   return { synced, details };
 }

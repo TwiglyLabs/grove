@@ -9,6 +9,7 @@ const mockDeleteWorkspaceState = vi.hoisted(() => vi.fn());
 const mockHasDirtyWorkingTree = vi.hoisted(() => vi.fn());
 const mockCheckout = vi.hoisted(() => vi.fn());
 const mockMergeFFOnly = vi.hoisted(() => vi.fn());
+const mockMerge = vi.hoisted(() => vi.fn());
 const mockRemoveWorktree = vi.hoisted(() => vi.fn());
 const mockDeleteBranch = vi.hoisted(() => vi.fn());
 const mockMergeAbort = vi.hoisted(() => vi.fn());
@@ -41,6 +42,7 @@ vi.mock('./git.js', () => ({
   hasDirtyWorkingTree: mockHasDirtyWorkingTree,
   checkout: mockCheckout,
   mergeFFOnly: mockMergeFFOnly,
+  merge: mockMerge,
   removeWorktree: mockRemoveWorktree,
   deleteBranch: mockDeleteBranch,
   mergeAbort: mockMergeAbort,
@@ -98,7 +100,7 @@ describe('closeWorkspace', () => {
       await closeWorkspace('feature-x', 'merge');
 
       // Verify sync was called before anything else
-      expect(mockSyncWorkspace).toHaveBeenCalledWith('feature-x');
+      expect(mockSyncWorkspace).toHaveBeenCalledWith('feature-x', undefined);
 
       // Verify state was set to closing
       expect(mockWriteWorkspaceState).toHaveBeenCalledWith(
@@ -184,19 +186,24 @@ describe('closeWorkspace', () => {
       );
     });
 
-    it('retries with re-sync when ff-merge fails, succeeds on retry', async () => {
+    it('retries with targeted merge when ff-merge fails, succeeds on retry', async () => {
       const state = createWorkspaceState();
       mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
+      mockMerge.mockReturnValue({ ok: true, conflicts: [] });
       mockMergeFFOnly
         .mockReturnValueOnce(true)   // child succeeds
         .mockReturnValueOnce(false)  // parent fails first attempt (race condition)
-        .mockReturnValueOnce(true);  // parent succeeds on retry after re-sync
+        .mockReturnValueOnce(true);  // parent succeeds on retry
 
       await closeWorkspace('feature-x', 'merge');
 
-      // Sync should have been called twice: initial + retry
-      expect(mockSyncWorkspace).toHaveBeenCalledTimes(2);
+      // Targeted merge on the failing repo's worktree (not full workspace sync)
+      expect(mockMerge).toHaveBeenCalledWith('/tmp/worktrees/myproject/feature-x', 'main');
+      expect(mockMerge).toHaveBeenCalledTimes(1);
+
+      // Initial sync only — no re-sync during retry
+      expect(mockSyncWorkspace).toHaveBeenCalledTimes(1);
 
       // Verify state was deleted (close completed)
       expect(mockDeleteWorkspaceState).toHaveBeenCalledWith('myproject-feature-x');
@@ -206,6 +213,7 @@ describe('closeWorkspace', () => {
       const state = createWorkspaceState();
       mockReadWorkspaceState.mockResolvedValue(state);
       mockHasDirtyWorkingTree.mockReturnValue(false);
+      mockMerge.mockReturnValue({ ok: true, conflicts: [] });
       mockMergeFFOnly
         .mockReturnValueOnce(true)   // child succeeds
         .mockReturnValueOnce(false)  // parent fails first attempt
@@ -221,6 +229,57 @@ describe('closeWorkspace', () => {
         ([s]: [WorkspaceState]) => s.status === 'failed',
       );
       expect(failedWrite).toBeDefined();
+    });
+
+    it('sets state to failed when retry merge has conflicts', async () => {
+      const state = createWorkspaceState();
+      mockReadWorkspaceState.mockResolvedValue(state);
+      mockHasDirtyWorkingTree.mockReturnValue(false);
+      mockMergeFFOnly
+        .mockReturnValueOnce(true)   // child succeeds
+        .mockReturnValueOnce(false); // parent fails first attempt
+      mockMerge.mockReturnValue({ ok: false, conflicts: ['file.ts'] });
+
+      await expect(closeWorkspace('feature-x', 'merge')).rejects.toThrow(
+        "Merge conflicts in 'myproject' during close retry. " +
+        "Workspace is partially closed — run 'grove workspace close feature-x --discard' to clean up."
+      );
+
+      // Targeted merge was attempted on the failing repo
+      expect(mockMerge).toHaveBeenCalledWith('/tmp/worktrees/myproject/feature-x', 'main');
+
+      // FF-merge should NOT have been retried (merge itself failed)
+      expect(mockMergeFFOnly).toHaveBeenCalledTimes(2);
+
+      // Verify state was set to failed
+      const failedWrite = mockWriteWorkspaceState.mock.calls.find(
+        ([s]: [WorkspaceState]) => s.status === 'failed',
+      );
+      expect(failedWrite).toBeDefined();
+    });
+
+    it('logs retry attempts when logger is provided', async () => {
+      const state = createWorkspaceState();
+      mockReadWorkspaceState.mockResolvedValue(state);
+      mockHasDirtyWorkingTree.mockReturnValue(false);
+      mockMerge.mockReturnValue({ ok: true, conflicts: [] });
+      mockMergeFFOnly
+        .mockReturnValueOnce(true)   // child succeeds
+        .mockReturnValueOnce(false)  // parent fails first attempt
+        .mockReturnValueOnce(true);  // parent succeeds on retry
+
+      const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn() };
+
+      await closeWorkspace('feature-x', 'merge', { logger });
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'ff-merge failed, re-merging and retrying',
+        { repo: 'myproject', branch: 'feature-x' },
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        'repo merged',
+        { repo: 'myproject', branch: 'feature-x' },
+      );
     });
 
     it('throws error when workspace not found', async () => {
@@ -293,7 +352,7 @@ describe('closeWorkspace', () => {
       await closeWorkspace('feature-x', 'merge');
 
       // Sync should re-sync the failed workspace
-      expect(mockSyncWorkspace).toHaveBeenCalledWith('feature-x');
+      expect(mockSyncWorkspace).toHaveBeenCalledWith('feature-x', undefined);
 
       // Verify close completed
       expect(mockDeleteWorkspaceState).toHaveBeenCalledWith('myproject-feature-x');

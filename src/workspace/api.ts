@@ -141,7 +141,7 @@ export async function sync(
   log.info('syncing workspace', { workspace, branch: state.branch });
 
   try {
-    const result = await internalSync(state.branch);
+    const result = await internalSync(state.branch, log);
     log.info('workspace synced', { workspace, synced: result.synced });
     return {
       synced: result.synced,
