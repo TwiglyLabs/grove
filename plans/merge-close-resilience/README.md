@@ -1,6 +1,6 @@
 ---
 title: Make merge-close resilient to concurrent operations
-status: draft
+status: not_started
 description: >-
   Fix TOCTOU race in workspace close, add retry logic, improve logging, and
   switch to async git operations
@@ -8,6 +8,7 @@ tags:
   - grove
   - reliability
 type: bugfix
+not_started_at: '2026-02-25T01:11:22.613Z'
 ---
 
 ## Problem
@@ -69,9 +70,9 @@ Replace `execSync` in `git.ts` with `execFile` (promisified). Update all callers
 - [x] Thread logger through `api.ts` → `closeWorkspace`
 - [x] Add `syncAndLog` helper that logs sync start/complete
 - [x] Log retry attempts and per-repo merge completion
-- [ ] Add logging to sync.ts merge operations
+- [ ] Add logger parameter to `syncWorkspace()` and thread from callers
+- [ ] Log per-repo merge start/result inside `syncWorkspace()`
+- [ ] Add test: verify logger receives sync operation events
 
-### Chunk 4: Async git operations (future)
-- [ ] Replace `execSync` in `git.ts` with `execFile` (promisified)
-- [ ] Update all callers to `await` git operations
-- [ ] This is the largest change — deferred to a separate plan
+### Chunk 4: Async git operations — DEFERRED
+Out of scope for this plan. Tracked separately as future work.
