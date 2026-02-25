@@ -534,7 +534,7 @@ describe('workspace api', () => {
 
       const result = await close(testWsId, 'merge');
 
-      expect(mockInternalClose).toHaveBeenCalledWith('feature-x', 'merge', { dryRun: undefined });
+      expect(mockInternalClose).toHaveBeenCalledWith('feature-x', 'merge', expect.objectContaining({ dryRun: undefined }));
       expect(result).toEqual({ branch: 'feature-x', mode: 'merge' });
     });
 
@@ -544,7 +544,7 @@ describe('workspace api', () => {
 
       const result = await close(testWsId, 'discard');
 
-      expect(mockInternalClose).toHaveBeenCalledWith('feature-x', 'discard', { dryRun: undefined });
+      expect(mockInternalClose).toHaveBeenCalledWith('feature-x', 'discard', expect.objectContaining({ dryRun: undefined }));
       expect(result).toEqual({ branch: 'feature-x', mode: 'discard' });
     });
 
@@ -555,7 +555,7 @@ describe('workspace api', () => {
 
       const result = await close(testWsId, 'merge', { dryRun: true });
 
-      expect(mockInternalClose).toHaveBeenCalledWith('feature-x', 'merge', { dryRun: true });
+      expect(mockInternalClose).toHaveBeenCalledWith('feature-x', 'merge', expect.objectContaining({ dryRun: true }));
       expect(result).toEqual(dryRunResult);
     });
 

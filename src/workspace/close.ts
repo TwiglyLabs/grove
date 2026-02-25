@@ -1,10 +1,12 @@
 import { readWorkspaceState, writeWorkspaceState, findWorkspaceByBranch, deleteWorkspaceState } from './state.js';
-import { hasDirtyWorkingTree, checkout, mergeFFOnly, canFFMerge, getCurrentBranch, removeWorktree, deleteBranch, mergeAbort, getRepoStatus } from './git.js';
+import { hasDirtyWorkingTree, checkout, mergeFFOnly, removeWorktree, deleteBranch, mergeAbort, getRepoStatus } from './git.js';
 import { syncWorkspace, ConflictError } from './sync.js';
 import type { WorkspaceState } from './types.js';
+import type { Logger } from '@twiglylabs/log';
 
 export interface CloseOptions {
   dryRun?: boolean;
+  logger?: Logger;
 }
 
 export interface CloseDryRunResult {
@@ -33,9 +35,9 @@ export async function closeWorkspace(
 }
 
 async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Promise<CloseDryRunResult | void> {
-  const { dryRun } = options;
+  const { dryRun, logger } = options;
 
-  if (state.status !== 'active') {
+  if (state.status !== 'active' && state.status !== 'failed') {
     throw new Error(`Cannot merge-close workspace in '${state.status}' state. Use --discard instead.`);
   }
 
@@ -48,49 +50,7 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
     }
   }
 
-  // Sync workspace to ensure it has latest upstream changes, then verify FF.
-  // Without this, if origin/parentBranch has advanced but the source repo's
-  // local parentBranch hasn't been pulled, the FF merge could succeed but
-  // leave the source repo missing upstream commits.
-  if (!dryRun) {
-    try {
-      await syncWorkspace(state.branch);
-    } catch (e) {
-      if (e instanceof ConflictError) {
-        throw new Error(
-          `Cannot merge: conflicts in '${e.conflicted}'. ` +
-          `Resolve conflicts, commit, then run 'grove workspace sync ${state.branch}' to complete syncing.`,
-        );
-      }
-      throw e;
-    }
-
-    // Save source repo branches so we can restore if FF check fails.
-    const savedBranches: Array<{ source: string; branch: string }> = [];
-    for (const repo of state.repos) {
-      savedBranches.push({ source: repo.source, branch: getCurrentBranch(repo.source) });
-    }
-
-    const restoreBranches = () => {
-      for (const { source, branch } of savedBranches) {
-        try { checkout(source, branch); } catch {}
-      }
-    };
-
-    // Verify all repos can FF after sync
-    for (const repo of state.repos) {
-      checkout(repo.source, repo.parentBranch);
-      if (!canFFMerge(repo.source, repo.parentBranch, state.branch)) {
-        restoreBranches();
-        throw new Error(
-          `Cannot fast-forward '${repo.name}' after sync.`,
-        );
-      }
-    }
-    // On success, source repos are on parentBranch — the close loop expects this
-  }
-
-  // If dry-run, return commit counts without actually closing
+  // If dry-run, return commit counts without syncing or closing
   if (dryRun) {
     const result: CloseDryRunResult = { repos: [] };
     for (const repo of state.repos) {
@@ -99,6 +59,12 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
     }
     return result;
   }
+
+  // Sync workspace to ensure it has latest upstream changes.
+  // Without this, if origin/parentBranch has advanced but the source repo's
+  // local parentBranch hasn't been pulled, the FF merge could succeed but
+  // leave the source repo missing upstream commits.
+  await syncAndLog(state, logger);
 
   // Set status to closing
   state.status = 'closing';
@@ -116,16 +82,25 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
     // Checkout parent branch in source
     checkout(repo.source, repo.parentBranch);
 
-    // Fast-forward merge
+    // Fast-forward merge — retry once with re-sync if it fails (handles
+    // race where another close advanced parentBranch between sync and merge)
     if (!mergeFFOnly(repo.source, state.branch)) {
-      state.status = 'failed';
-      state.updatedAt = new Date().toISOString();
-      await writeWorkspaceState(state);
-      throw new Error(
-        `Fast-forward merge failed for '${repo.name}' during close. ` +
-        `Workspace is partially closed — run 'grove workspace close ${state.branch} --discard' to clean up.`,
-      );
+      logger?.info('ff-merge failed, re-syncing and retrying', { repo: repo.name, branch: state.branch });
+      await syncAndLog(state, logger);
+      checkout(repo.source, repo.parentBranch);
+
+      if (!mergeFFOnly(repo.source, state.branch)) {
+        state.status = 'failed';
+        state.updatedAt = new Date().toISOString();
+        await writeWorkspaceState(state);
+        throw new Error(
+          `Fast-forward merge failed for '${repo.name}' during close. ` +
+          `Workspace is partially closed — run 'grove workspace close ${state.branch} --discard' to clean up.`,
+        );
+      }
     }
+
+    logger?.debug('repo merged', { repo: repo.name, branch: state.branch });
 
     // Remove worktree and branch
     try {
@@ -141,6 +116,22 @@ async function closeMerge(state: WorkspaceState, options: CloseOptions = {}): Pr
   }
 
   await deleteWorkspaceState(state.id);
+}
+
+async function syncAndLog(state: WorkspaceState, logger?: Logger): Promise<void> {
+  logger?.debug('syncing workspace', { branch: state.branch });
+  try {
+    await syncWorkspace(state.branch);
+    logger?.debug('sync complete', { branch: state.branch });
+  } catch (e) {
+    if (e instanceof ConflictError) {
+      throw new Error(
+        `Cannot merge: conflicts in '${e.conflicted}'. ` +
+        `Resolve conflicts, commit, then run 'grove workspace sync ${state.branch}' to complete syncing.`,
+      );
+    }
+    throw e;
+  }
 }
 
 async function closeDiscard(state: WorkspaceState): Promise<void> {

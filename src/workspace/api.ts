@@ -169,7 +169,7 @@ export async function close(
 
   log.info('closing workspace', { workspace, branch: state.branch, mode });
 
-  const result = await internalClose(state.branch, mode, { dryRun: options?.dryRun });
+  const result = await internalClose(state.branch, mode, { dryRun: options?.dryRun, logger: log });
 
   if (options?.dryRun && result) {
     return result as DryRunResult;
