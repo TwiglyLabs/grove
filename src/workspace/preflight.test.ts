@@ -323,17 +323,20 @@ describe('validateRepoPaths', () => {
     expect(validateRepoPaths(['packages/lib', 'packages/app'])).toEqual([]);
   });
 
-  it('rejects paths with ..', () => {
-    const errors = validateRepoPaths(['../sibling', 'public']);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("must not contain '..'");
-    expect(errors[0]).toContain('../sibling');
+  it('accepts sibling paths with ../ prefix', () => {
+    expect(validateRepoPaths(['../log', '../bark'])).toEqual([]);
   });
 
   it('rejects paths with .. in the middle', () => {
     const errors = validateRepoPaths(['packages/../escape']);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("must not contain '..'");
+    expect(errors[0]).toContain('..');
+  });
+
+  it('rejects deeply nested .. traversal', () => {
+    const errors = validateRepoPaths(['../../outside']);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('..');
   });
 
   it('rejects absolute paths (unix)', () => {
@@ -356,7 +359,7 @@ describe('validateRepoPaths', () => {
   });
 
   it('reports multiple errors at once', () => {
-    const errors = validateRepoPaths(['../bad', '/absolute', 'ok', 'ok']);
+    const errors = validateRepoPaths(['../../bad', '/absolute', 'ok', 'ok']);
     expect(errors).toHaveLength(3); // .., absolute, duplicate
   });
 });

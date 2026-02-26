@@ -70,7 +70,9 @@ export function validateRepoPaths(
     if (p.startsWith('/') || /^[A-Za-z]:/.test(p)) {
       errors.push(`Workspace repo path must be relative: '${p}'`);
     }
-    if (p.includes('..')) {
+    // Allow ../ prefix for sibling repos, reject .. elsewhere
+    const rest = p.startsWith('../') ? p.slice(3) : p;
+    if (rest.includes('..')) {
       errors.push(`Workspace repo path must not contain '..': '${p}'`);
     }
     if (seen.has(p)) {

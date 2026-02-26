@@ -551,6 +551,37 @@ describe('createWorkspace', () => {
     expect(lastStateWrite.status).toBe('failed');
   });
 
+  it('sibling repo paths (../) → name stripped to basename for worktree placement', async () => {
+    mockLoadWorkspaceConfig.mockReturnValue({
+      repos: [
+        { path: '../log' },
+        { path: '../bark' },
+      ],
+    });
+
+    mockPreflightCreate.mockResolvedValue({
+      ok: true,
+      sources: [
+        { name: 'project', role: 'parent', source: '/repos/project', parentBranch: 'main' },
+        { name: 'log', role: 'child', source: '/repos/log', parentBranch: 'main' },
+        { name: 'bark', role: 'child', source: '/repos/bark', parentBranch: 'main' },
+      ],
+      workspaceId: 'project-feature-x',
+      worktreeBase: '/home/user/worktrees',
+    });
+
+    await createWorkspace('feature-x');
+
+    // Preflight should receive names without ../ prefix
+    const preflightSources = mockPreflightCreate.mock.calls[0][0];
+    expect(preflightSources[1].name).toBe('log');
+    expect(preflightSources[2].name).toBe('bark');
+
+    // Paths should be resolved to absolute (resolve('/repos/project', '../log') = '/repos/log')
+    expect(preflightSources[1].path).toBe('/repos/log');
+    expect(preflightSources[2].path).toBe('/repos/bark');
+  });
+
   it('childRepos provided → uses those instead of config repos', async () => {
     // Config has repos, but childRepos should override
     mockLoadWorkspaceConfig.mockReturnValue({
