@@ -59,7 +59,7 @@ export async function createWorkspace(
       sources.push({
         path: resolve(sourceRoot, repo.path),
         role: 'child',
-        name: repo.path,
+        name: repo.path.startsWith('../') ? repo.path.slice(3) : repo.path,
       });
     }
   }

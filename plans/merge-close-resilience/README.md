@@ -1,6 +1,6 @@
 ---
 title: Make merge-close resilient to concurrent operations
-status: in_progress
+status: done
 description: >-
   Fix TOCTOU race in workspace close, add retry logic, improve logging, and
   switch to async git operations
@@ -10,7 +10,7 @@ tags:
 type: bugfix
 not_started_at: '2026-02-25T01:11:22.613Z'
 started_at: '2026-02-25T01:13:15.927Z'
-completed_at: '2026-02-25T03:36:27.463Z'
+completed_at: '2026-02-25T03:30:46.652Z'
 ---
 
 ## Problem
