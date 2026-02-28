@@ -485,7 +485,7 @@ describe('workspace api', () => {
 
       const result = await sync(testWsId);
 
-      expect(mockInternalSync).toHaveBeenCalledWith('feature-x');
+      expect(mockInternalSync).toHaveBeenCalledWith('feature-x', expect.any(Object));
       expect(result).toEqual({
         synced: ['project'],
         details: [{ name: 'project', status: 'synced' }],
@@ -523,7 +523,7 @@ describe('workspace api', () => {
       await sync(testWsId);
 
       expect(mockFindWorkspaceByBranch).toHaveBeenCalledWith(testWsId);
-      expect(mockInternalSync).toHaveBeenCalledWith('feature-x');
+      expect(mockInternalSync).toHaveBeenCalledWith('feature-x', expect.any(Object));
     });
   });
 
