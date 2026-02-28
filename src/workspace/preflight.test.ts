@@ -333,10 +333,9 @@ describe('validateRepoPaths', () => {
     expect(errors[0]).toContain('..');
   });
 
-  it('rejects deeply nested .. traversal', () => {
-    const errors = validateRepoPaths(['../../outside']);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('..');
+  it('accepts deeper relative paths with multiple ../ prefixes', () => {
+    expect(validateRepoPaths(['../../outside'])).toEqual([]);
+    expect(validateRepoPaths(['../../foo/bar'])).toEqual([]);
   });
 
   it('rejects absolute paths (unix)', () => {
@@ -359,7 +358,7 @@ describe('validateRepoPaths', () => {
   });
 
   it('reports multiple errors at once', () => {
-    const errors = validateRepoPaths(['../../bad', '/absolute', 'ok', 'ok']);
+    const errors = validateRepoPaths(['foo/../bad', '/absolute', 'ok', 'ok']);
     expect(errors).toHaveLength(3); // .., absolute, duplicate
   });
 });
