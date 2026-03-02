@@ -16,13 +16,21 @@ export function ensureCluster(provider: ClusterProvider, clusterName: string): v
 }
 
 /**
- * Ensure a Kubernetes namespace exists. Provider-independent (uses kubectl).
+ * Ensure a Kubernetes namespace exists and is labeled for Helm ownership.
+ * Provider-independent (uses kubectl).
+ *
+ * Labels and annotations are applied idempotently (--overwrite) so Helm
+ * can adopt the namespace whether it was just created or already existed.
  */
-export function ensureNamespace(namespace: string): void {
+export function ensureNamespace(namespace: string, helmRelease: string): void {
   try {
     execSync(`kubectl get namespace ${namespace}`, { stdio: 'pipe' });
   } catch {
     printInfo(`Creating namespace: ${namespace}...`);
     execSync(`kubectl create namespace ${namespace}`, { stdio: 'inherit' });
   }
+
+  // Label and annotate for Helm ownership so helm upgrade --install can adopt the namespace
+  execSync(`kubectl label namespace ${namespace} app.kubernetes.io/managed-by=Helm --overwrite`, { stdio: 'pipe' });
+  execSync(`kubectl annotate namespace ${namespace} meta.helm.sh/release-name=${helmRelease} meta.helm.sh/release-namespace=${namespace} --overwrite`, { stdio: 'pipe' });
 }

@@ -170,7 +170,7 @@ describe('environment state concurrency', () => {
       // Exactly one state file should exist
       const files = readdirSync(join(testDir, '.grove')).filter(f => f.endsWith('.json'));
       expect(files).toHaveLength(1);
-      expect(files[0]).toBe('main.json');
+      expect(files[0]).toBe(`${first.worktreeId}.json`);
     });
 
     it('loadOrCreateState returns existing state without re-allocating ports', { timeout: 30_000 }, async () => {
@@ -201,7 +201,7 @@ describe('environment state concurrency', () => {
       writeFileSync(join(stateDir, 'main.json'), '{"truncated": ', 'utf-8');
       writeFileSync(join(stateDir, 'main.json.tmp'), JSON.stringify(validState, null, 2), 'utf-8');
 
-      const result = await readState(config);
+      const result = await readState(config, 'main');
 
       expect(result).not.toBeNull();
       expect(result!.namespace).toBe('testapp-main');
@@ -229,7 +229,7 @@ describe('environment state concurrency', () => {
       // Main file is corrupt
       writeFileSync(join(stateDir, 'main.json'), '{"truncated": ', 'utf-8');
 
-      const result = await readState(config);
+      const result = await readState(config, 'main');
 
       // Should NOT recover from stale .tmp
       expect(result).toBeNull();
@@ -245,7 +245,7 @@ describe('environment state concurrency', () => {
       writeFileSync(join(stateDir, 'main.json'), 'corrupt{', 'utf-8');
       writeFileSync(join(stateDir, 'main.json.tmp'), 'also corrupt{', 'utf-8');
 
-      const result = await readState(config);
+      const result = await readState(config, 'main');
       expect(result).toBeNull();
     });
 

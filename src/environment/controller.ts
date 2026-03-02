@@ -184,7 +184,7 @@ export async function ensureEnvironment(
   printSuccess(`Worktree: ${state.worktreeId}`);
 
   printSection('Creating Namespace');
-  ensureNamespace(state.namespace);
+  ensureNamespace(state.namespace, config.helm.release);
 
   printSection('Building and Deploying');
   const orchestrator = new BuildOrchestrator(config, state, provider);

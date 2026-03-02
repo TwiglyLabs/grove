@@ -92,6 +92,7 @@ export const HelmSchema = z.object({
   release: z.string(),
   valuesFiles: z.array(z.string()),
   secretsTemplate: z.string().optional(),
+  wait: z.boolean().optional(),
 });
 
 // --- Reload targets (owned by environment slice) ---

@@ -98,24 +98,24 @@ describe('ensureNamespace', () => {
   it('does not create namespace when it already exists', () => {
     mockExecSync.mockReturnValue('');
 
-    ensureNamespace('my-namespace');
+    ensureNamespace('my-namespace', 'my-release');
 
     expect(mockExecSync).toHaveBeenCalledWith(
       'kubectl get namespace my-namespace',
       { stdio: 'pipe' },
     );
-    // Only the get call, no create
-    expect(mockExecSync).toHaveBeenCalledTimes(1);
+    // get + label + annotate (no create)
+    expect(mockExecSync).toHaveBeenCalledTimes(3);
   });
 
   it('creates namespace when get fails', () => {
     mockExecSync
       .mockImplementationOnce(() => { throw new Error('not found'); })
-      .mockReturnValueOnce('');
+      .mockReturnValue('');
 
-    ensureNamespace('my-namespace');
+    ensureNamespace('my-namespace', 'my-release');
 
-    expect(mockExecSync).toHaveBeenCalledTimes(2);
+    expect(mockExecSync).toHaveBeenCalledTimes(4);
     expect(mockExecSync).toHaveBeenNthCalledWith(1,
       'kubectl get namespace my-namespace',
       { stdio: 'pipe' },
@@ -126,10 +126,25 @@ describe('ensureNamespace', () => {
     );
   });
 
+  it('applies Helm ownership labels and annotations', () => {
+    mockExecSync.mockReturnValue('');
+
+    ensureNamespace('my-namespace', 'my-release');
+
+    expect(mockExecSync).toHaveBeenCalledWith(
+      'kubectl label namespace my-namespace app.kubernetes.io/managed-by=Helm --overwrite',
+      { stdio: 'pipe' },
+    );
+    expect(mockExecSync).toHaveBeenCalledWith(
+      'kubectl annotate namespace my-namespace meta.helm.sh/release-name=my-release meta.helm.sh/release-namespace=my-namespace --overwrite',
+      { stdio: 'pipe' },
+    );
+  });
+
   it('prints info when creating namespace', () => {
     mockExecSync.mockImplementationOnce(() => { throw new Error('not found'); });
 
-    ensureNamespace('my-namespace');
+    ensureNamespace('my-namespace', 'my-release');
 
     expect(printInfo).toHaveBeenCalledWith('Creating namespace: my-namespace...');
   });
@@ -139,7 +154,7 @@ describe('ensureNamespace', () => {
       .mockImplementationOnce(() => { throw new Error('not found'); })
       .mockImplementationOnce(() => { throw new Error('forbidden: insufficient permissions'); });
 
-    expect(() => ensureNamespace('my-namespace')).toThrow('forbidden: insufficient permissions');
+    expect(() => ensureNamespace('my-namespace', 'my-release')).toThrow('forbidden: insufficient permissions');
   });
 });
 

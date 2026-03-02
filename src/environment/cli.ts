@@ -228,7 +228,7 @@ export async function pruneCommand(repoId: RepoId, options?: { dryRun?: boolean 
 
 export async function reloadCommand(repoId: RepoId, service?: string): Promise<void> {
   const config = await loadConfig(repoId);
-  const targets = config.utilities?.reloadTargets ?? [];
+  const targets = config.services.filter(s => s.build).map(s => s.name);
 
   if (!service) {
     printError('Usage: grove reload <service>');

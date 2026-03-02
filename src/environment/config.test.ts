@@ -176,6 +176,27 @@ describe('HelmSchema', () => {
 
     expect(result.secretsTemplate).toBe('secrets.yaml.tpl');
   });
+
+  it('defaults wait to undefined (truthy behavior)', () => {
+    const result = HelmSchema.parse({
+      chart: './chart',
+      release: 'my-release',
+      valuesFiles: ['values.yaml'],
+    });
+
+    expect(result.wait).toBeUndefined();
+  });
+
+  it('accepts wait: false', () => {
+    const result = HelmSchema.parse({
+      chart: './chart',
+      release: 'my-release',
+      valuesFiles: ['values.yaml'],
+      wait: false,
+    });
+
+    expect(result.wait).toBe(false);
+  });
 });
 
 describe('BootstrapStepSchema', () => {

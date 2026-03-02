@@ -175,6 +175,30 @@ describe('BuildOrchestrator', () => {
       );
     });
 
+    it('includes --wait by default', () => {
+      const orchestrator = new BuildOrchestrator(makeConfig(), makeState(), provider);
+
+      orchestrator.helmUpgrade();
+
+      expect(mockExecSync).toHaveBeenCalledWith(
+        expect.stringContaining('--wait'),
+        { stdio: 'inherit' },
+      );
+    });
+
+    it('omits --wait when helm.wait is false', () => {
+      const config = makeConfig({
+        helm: { chart: './chart', release: 'test', valuesFiles: ['values.yaml'], wait: false },
+      });
+      const orchestrator = new BuildOrchestrator(config, makeState(), provider);
+
+      orchestrator.helmUpgrade();
+
+      const cmd = mockExecSync.mock.calls[0][0] as string;
+      expect(cmd).not.toContain('--wait');
+      expect(cmd).not.toContain('--timeout');
+    });
+
     it('throws DeploymentFailedError on failure', () => {
       mockExecSync.mockImplementationOnce(() => { throw new Error('helm error'); });
       const orchestrator = new BuildOrchestrator(makeConfig(), makeState(), provider);

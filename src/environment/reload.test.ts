@@ -37,10 +37,12 @@ const testRepoId = asRepoId('repo_test123');
 const mockConfig = {
   project: { name: 'test-app', cluster: 'test-cluster' },
   repoRoot: '/tmp/test-repo',
-  utilities: {
-    reloadTargets: ['api', 'auth', 'worker'],
-  },
-  services: [],
+  services: [
+    { name: 'api', build: { image: 'api:latest', dockerfile: 'Dockerfile.api' } },
+    { name: 'auth', build: { image: 'auth:latest', dockerfile: 'Dockerfile.auth' } },
+    { name: 'worker', build: { image: 'worker:latest', dockerfile: 'Dockerfile.worker' } },
+    { name: 'redis' }, // no build — not a reload target
+  ],
   helm: { chart: 'test', release: 'test', valuesFiles: [] },
   portBlockSize: 5,
 } as unknown as GroveConfig;
@@ -108,24 +110,18 @@ describe('reloadCommand', () => {
     }
   });
 
-  it('handles config with no reloadTargets', async () => {
-    const configNoTargets = {
-      ...mockConfig,
-      utilities: {},
-    } as unknown as GroveConfig;
-    vi.mocked(loadConfig).mockResolvedValue(configNoTargets);
+  it('rejects service with no build config', async () => {
+    await expect(reloadCommand(testRepoId, 'redis')).rejects.toThrow(ExitError);
 
-    await expect(reloadCommand(testRepoId, 'api')).rejects.toThrow(ExitError);
-
-    expect(printError).toHaveBeenCalledWith('Unknown service: api');
+    expect(printError).toHaveBeenCalledWith('Unknown service: redis');
   });
 
-  it('handles config with no utilities section', async () => {
-    const configNoUtils = {
+  it('handles config with no buildable services', async () => {
+    const configNoBuild = {
       ...mockConfig,
-      utilities: undefined,
+      services: [{ name: 'redis' }],
     } as unknown as GroveConfig;
-    vi.mocked(loadConfig).mockResolvedValue(configNoUtils);
+    vi.mocked(loadConfig).mockResolvedValue(configNoBuild);
 
     await expect(reloadCommand(testRepoId, 'api')).rejects.toThrow(ExitError);
 

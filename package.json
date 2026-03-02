@@ -1,6 +1,6 @@
 {
   "name": "@twiglylabs/grove",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Config-driven local Kubernetes development tool",
   "type": "module",
   "bin": {

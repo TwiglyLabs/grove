@@ -82,6 +82,10 @@ export class BuildOrchestrator {
       ? `-f ${join(this.config.repoRoot, secretsTemplate)}`
       : '';
 
+    const waitArgs = this.config.helm.wait !== false
+      ? ['--wait', '--timeout 5m']
+      : [];
+
     const helmCmd = [
       'helm upgrade',
       '--install',
@@ -91,8 +95,7 @@ export class BuildOrchestrator {
       '--create-namespace',
       valuesArgs,
       secretsArg,
-      '--wait',
-      '--timeout 5m',
+      ...waitArgs,
     ]
       .filter(Boolean)
       .join(' ');
