@@ -109,6 +109,14 @@ export class AbortError extends GroveError {
   }
 }
 
+// --- Hooks ---
+
+export class HookFailedError extends GroveError {
+  constructor(public hookName: string, cause?: unknown) {
+    super('HOOK_FAILED', `Hook "${hookName}" failed${cause ? `: ${cause}` : ''}`);
+  }
+}
+
 // --- Preflight ---
 
 export class PreflightFailedError extends GroveError {

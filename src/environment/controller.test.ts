@@ -30,6 +30,11 @@ vi.mock('./bootstrap.js', () => ({
   runBootstrapChecks: vi.fn(),
 }));
 
+const mockRunPreDeployHooks = vi.fn();
+vi.mock('./hooks.js', () => ({
+  runPreDeployHooks: mockRunPreDeployHooks,
+}));
+
 const mockWriteState = vi.fn();
 vi.mock('./state.js', () => ({
   loadOrCreateState: vi.fn(() => ({
@@ -313,6 +318,38 @@ describe('ensureEnvironment', () => {
       // killProcess should have been called for both port-forward processes
       expect(mockKillProcess).toHaveBeenCalledWith(1001, 2000);
       expect(mockKillProcess).toHaveBeenCalledWith(1002, 2000);
+    });
+  });
+
+  describe('pre-deploy hooks', () => {
+    it('calls runPreDeployHooks before buildAndDeploy', async () => {
+      const callOrder: string[] = [];
+      mockRunPreDeployHooks.mockImplementation(() => {
+        callOrder.push('hooks');
+      });
+
+      // Track buildAndDeploy call order via printSection mock
+      const { printSection } = await import('../shared/output.js');
+      vi.mocked(printSection).mockImplementation((section: string) => {
+        if (section === 'Running Pre-Deploy Hooks') callOrder.push('hooks-section');
+        if (section === 'Building and Deploying') callOrder.push('build-section');
+      });
+
+      const config = makeConfig();
+      await ensureEnvironment(config);
+
+      expect(mockRunPreDeployHooks).toHaveBeenCalledWith(config);
+      expect(callOrder.indexOf('hooks')).toBeLessThan(callOrder.indexOf('build-section'));
+    });
+
+    it('aborts lifecycle when a hook fails', async () => {
+      const { HookFailedError } = await import('../shared/errors.js');
+      mockRunPreDeployHooks.mockImplementation(() => {
+        throw new HookFailedError('Generate CRDs', 'command failed');
+      });
+
+      const config = makeConfig();
+      await expect(ensureEnvironment(config)).rejects.toThrow('Hook "Generate CRDs" failed');
     });
   });
 

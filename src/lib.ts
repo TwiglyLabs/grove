@@ -25,6 +25,7 @@ export {
   FrontendStartFailedError,
   BuildFailedError,
   ImageLoadFailedError,
+  HookFailedError,
   NamespaceDeletionFailedError,
   StateWriteFailedError,
   StateCorruptedError,

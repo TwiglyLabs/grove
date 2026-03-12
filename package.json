@@ -20,7 +20,6 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc 2>&1 | bark convert tsc --gate build && chmod +x dist/index.js",
-    "publish:local": "npm run build && npm publish --registry http://localhost:4873",
     "dev": "tsc --watch",
     "lint": "tsc --noEmit 2>&1 | bark convert tsc --gate typecheck",
     "test": "vitest run --reporter=verbose --reporter=json --outputFile=.bark/.vitest-raw.json; bark convert vitest .bark/.vitest-raw.json --gate unit-tests",

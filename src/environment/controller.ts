@@ -7,6 +7,7 @@ import { ensureCluster, ensureNamespace } from './cluster.js';
 import { loadOrCreateState, writeState } from './state.js';
 import { runBootstrapChecks } from './bootstrap.js';
 import { runPreflightChecks } from './preflight.js';
+import { runPreDeployHooks } from './hooks.js';
 import { BuildOrchestrator } from './processes/BuildOrchestrator.js';
 import { createClusterProvider } from './providers/index.js';
 import { PortForwardProcess } from './processes/PortForwardProcess.js';
@@ -185,6 +186,9 @@ export async function ensureEnvironment(
 
   printSection('Creating Namespace');
   ensureNamespace(state.namespace, config.helm.release);
+
+  printSection('Running Pre-Deploy Hooks');
+  runPreDeployHooks(config);
 
   printSection('Building and Deploying');
   const orchestrator = new BuildOrchestrator(config, state, provider);

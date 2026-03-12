@@ -19,11 +19,15 @@ export class BuildOrchestrator {
 
     printInfo(`Building ${service.name}...`);
 
-    const { image, dockerfile } = service.build;
+    const { image, dockerfile, args } = service.build;
     const dockerfilePath = join(this.config.repoRoot, dockerfile);
 
-    // docker build -t <image> -f <dockerfile> <repoRoot>
-    const buildCmd = `docker build -t ${image} -f ${dockerfilePath} ${this.config.repoRoot}`;
+    const buildArgs = args
+      ? Object.entries(args).map(([k, v]) => `--build-arg ${k}=${v}`).join(' ')
+      : '';
+
+    // docker build -t <image> -f <dockerfile> [--build-arg ...] <repoRoot>
+    const buildCmd = `docker build -t ${image} -f ${dockerfilePath} ${buildArgs} ${this.config.repoRoot}`;
 
     try {
       execSync(buildCmd, { stdio: 'inherit' });

@@ -7,6 +7,8 @@ import {
   HelmSchema,
   BootstrapStepSchema,
   PortForwardSchema,
+  HookStepSchema,
+  EnvironmentHooksSchema,
 } from './config.js';
 
 describe('ClusterTypeSchema', () => {
@@ -221,5 +223,46 @@ describe('BootstrapStepSchema', () => {
 
     expect(result.check.type).toBe('commandSucceeds');
     expect(result.fix.type).toBe('run');
+  });
+});
+
+describe('HookStepSchema', () => {
+  it('parses valid hook step', () => {
+    const result = HookStepSchema.parse({
+      name: 'Generate CRDs',
+      command: 'docker run --rm gateway-gen',
+    });
+    expect(result.name).toBe('Generate CRDs');
+    expect(result.command).toBe('docker run --rm gateway-gen');
+  });
+
+  it('rejects hook step without name', () => {
+    expect(() => HookStepSchema.parse({ command: 'echo hi' })).toThrow();
+  });
+
+  it('rejects hook step without command', () => {
+    expect(() => HookStepSchema.parse({ name: 'test' })).toThrow();
+  });
+});
+
+describe('EnvironmentHooksSchema', () => {
+  it('parses hooks with pre-deploy array', () => {
+    const result = EnvironmentHooksSchema.parse({
+      'pre-deploy': [
+        { name: 'Hook 1', command: 'echo 1' },
+        { name: 'Hook 2', command: 'echo 2' },
+      ],
+    });
+    expect(result['pre-deploy']).toHaveLength(2);
+  });
+
+  it('parses hooks with empty pre-deploy array', () => {
+    const result = EnvironmentHooksSchema.parse({ 'pre-deploy': [] });
+    expect(result['pre-deploy']).toEqual([]);
+  });
+
+  it('parses hooks without pre-deploy (optional)', () => {
+    const result = EnvironmentHooksSchema.parse({});
+    expect(result['pre-deploy']).toBeUndefined();
   });
 });

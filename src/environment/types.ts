@@ -168,6 +168,7 @@ export type EnvironmentPhase =
   | 'bootstrap'
   | 'state'
   | 'namespace'
+  | 'hooks'
   | 'build'
   | 'deploy'
   | 'port-forward'

@@ -446,6 +446,38 @@ services:
     });
   });
 
+  describe('hooks config', () => {
+    it('parses config with hooks section', () => {
+      const configWithHooks = `
+project:
+  name: testapp
+helm:
+  chart: chart
+  release: testapp
+  valuesFiles: [values.yaml]
+services:
+  - name: api
+hooks:
+  pre-deploy:
+    - name: Generate CRDs
+      command: docker run --rm gateway-gen
+`;
+      mockReadFileSync.mockReturnValue(configWithHooks);
+      const config = loadConfig('/tmp/test-repo');
+
+      expect(config.hooks).toBeDefined();
+      expect(config.hooks!['pre-deploy']).toHaveLength(1);
+      expect(config.hooks!['pre-deploy']![0].name).toBe('Generate CRDs');
+      expect(config.hooks!['pre-deploy']![0].command).toBe('docker run --rm gateway-gen');
+    });
+
+    it('parses config without hooks section', () => {
+      mockReadFileSync.mockReturnValue(minimalConfig);
+      const config = loadConfig('/tmp/test-repo');
+      expect(config.hooks).toBeUndefined();
+    });
+  });
+
   describe('workspace config', () => {
     it('parses config with workspace section', () => {
       const configWithWorkspace = `

@@ -17,6 +17,8 @@ import {
   ProjectSchema,
   HelmSchema,
   ReloadTargetsSchema,
+  HookStepSchema,
+  EnvironmentHooksSchema,
 } from './environment/config.js';
 
 // Re-export environment schemas for consumers
@@ -29,6 +31,8 @@ export {
   HealthCheckSchema,
   ServiceSchema,
   FrontendSchema,
+  HookStepSchema,
+  EnvironmentHooksSchema,
 };
 
 // Re-export environment types
@@ -41,6 +45,8 @@ export type {
   HealthCheck,
   Service,
   Frontend,
+  HookStep,
+  EnvironmentHooks,
 } from './environment/config.js';
 
 // --- Testing slice schemas (imported from owning slice) ---
@@ -110,6 +116,7 @@ export const GroveConfigSchema = z.object({
   simulator: SimulatorSchema.optional(),
   utilities: UtilitiesSchema.optional(),
   workspace: WorkspaceConfigSchema.optional(),
+  hooks: EnvironmentHooksSchema.optional(),
 });
 
 export type { WorkspaceRepo, WorkspaceConfig, Hooks } from './workspace/config.js';

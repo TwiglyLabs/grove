@@ -47,6 +47,7 @@ export const BootstrapStepSchema = z.object({
 export const ServiceBuildSchema = z.object({
   image: z.string(),
   dockerfile: z.string(),
+  args: z.record(z.string()).optional(),
   watchPaths: z.array(z.string()).optional(),
 });
 
@@ -99,6 +100,17 @@ export const HelmSchema = z.object({
 
 export const ReloadTargetsSchema = z.array(z.string()).optional();
 
+// --- Hook schemas ---
+
+export const HookStepSchema = z.object({
+  name: z.string(),
+  command: z.string(),
+});
+
+export const EnvironmentHooksSchema = z.object({
+  'pre-deploy': z.array(HookStepSchema).optional(),
+});
+
 // --- Derived types ---
 
 export type BootstrapCheck = z.infer<typeof BootstrapCheckSchema>;
@@ -109,3 +121,5 @@ export type PortForward = z.infer<typeof PortForwardSchema>;
 export type HealthCheck = z.infer<typeof HealthCheckSchema>;
 export type Service = z.infer<typeof ServiceSchema>;
 export type Frontend = z.infer<typeof FrontendSchema>;
+export type HookStep = z.infer<typeof HookStepSchema>;
+export type EnvironmentHooks = z.infer<typeof EnvironmentHooksSchema>;
