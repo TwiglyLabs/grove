@@ -244,6 +244,14 @@ describe('program', () => {
       expect(optionNames(getCommand('up'))).toContain('--all');
     });
 
+    it('up has --dev option', () => {
+      expect(optionNames(getCommand('up'))).toContain('--dev');
+    });
+
+    it('up has --pull option', () => {
+      expect(optionNames(getCommand('up'))).toContain('--pull');
+    });
+
     it('logs has --pod option', () => {
       expect(optionNames(getCommand('logs'))).toContain('--pod');
     });

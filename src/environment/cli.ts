@@ -23,11 +23,17 @@ import * as api from './api.js';
 export interface UpCommandOptions {
   frontend?: string;
   all?: boolean;
+  dev?: string[];
+  pull?: boolean;
 }
 
 export async function upCommand(repoId: RepoId, options: UpCommandOptions): Promise<void> {
   const config = await loadConfig(repoId);
   printBanner(config.project.name);
+
+  if (options.dev?.length) {
+    printInfo(`Dev mode: building ${options.dev.join(', ')} locally, pulling rest from registry`);
+  }
 
   const result = await api.up(repoId, options);
 

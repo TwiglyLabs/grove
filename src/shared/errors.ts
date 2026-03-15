@@ -148,6 +148,12 @@ export class BuildFailedError extends GroveError {
   }
 }
 
+export class RegistryPullFailedError extends GroveError {
+  constructor(public service: string, cause?: unknown) {
+    super('REGISTRY_PULL_FAILED', `Failed to pull ${service} from registry${cause ? `: ${cause}` : ''}`);
+  }
+}
+
 export class ImageLoadFailedError extends GroveError {
   constructor(public service: string, public providerType: string, cause?: unknown) {
     super('IMAGE_LOAD_FAILED', `Failed to load ${service} to ${providerType}${cause ? `: ${cause}` : ''}`);

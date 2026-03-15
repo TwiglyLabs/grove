@@ -14,7 +14,7 @@ import { PortForwardProcess } from './processes/PortForwardProcess.js';
 import { GenericDevServer } from './frontends/GenericDevServer.js';
 import { waitForHealth, waitForHealthResult } from './health.js';
 import { printInfo, printSuccess, printError, printSection } from '../shared/output.js';
-import { DeploymentFailedError } from '../shared/errors.js';
+import { ConfigValidationError, DeploymentFailedError } from '../shared/errors.js';
 import { Timer } from './timing.js';
 import { killProcess } from './process-kill.js';
 
@@ -43,21 +43,26 @@ async function startPortForwards(config: GroveConfig, state: EnvironmentState): 
     const localPort = state.ports[service.name];
     const remotePort = service.portForward.remotePort;
     const hostIp = service.portForward.hostIp || '127.0.0.1';
+    const targetService = service.portForward.serviceName ?? service.name;
 
     printInfo(`Port forwarding ${service.name}: ${localPort} -> ${remotePort}`);
 
-    const portForward = new PortForwardProcess({
-      namespace: state.namespace,
-      serviceName: service.name,
-      remotePort,
-      localPort,
-      hostIp,
-    });
+    try {
+      const portForward = new PortForwardProcess({
+        namespace: state.namespace,
+        serviceName: targetService,
+        remotePort,
+        localPort,
+        hostIp,
+      });
 
-    const processInfo = await portForward.start(logsDir);
-    state.processes[`port-forward-${service.name}`] = processInfo;
+      const processInfo = await portForward.start(logsDir);
+      state.processes[`port-forward-${service.name}`] = processInfo;
 
-    printSuccess(`${service.name} port forward started (PID: ${processInfo.pid})`);
+      printSuccess(`${service.name} port forward started (PID: ${processInfo.pid})`);
+    } catch {
+      printError(`${service.name} port forward failed (skipping)`);
+    }
   }
 }
 
@@ -164,9 +169,26 @@ async function healthCheckAll(config: GroveConfig, state: EnvironmentState): Pro
 
 export async function ensureEnvironment(
   config: GroveConfig,
-  options: { frontend?: string; all?: boolean } = {}
+  options: { frontend?: string; all?: boolean; dev?: string[]; pull?: boolean } = {}
 ): Promise<{ state: EnvironmentState; health: HealthCheckResult[]; supervisor?: SupervisorHandle }> {
   const timer = new Timer();
+
+  // Validate --dev options
+  if (options.dev?.length) {
+    if (!config.project.registry) {
+      throw new ConfigValidationError([
+        { path: ['project', 'registry'], message: '--dev requires a registry in project config' },
+      ]);
+    }
+    const buildableNames = config.services.filter(s => s.build).map(s => s.name);
+    for (const name of options.dev) {
+      if (!buildableNames.includes(name)) {
+        throw new ConfigValidationError([
+          { path: ['dev'], message: `Unknown buildable service: ${name}. Available: ${buildableNames.join(', ')}` },
+        ]);
+      }
+    }
+  }
 
   const provider = createClusterProvider(config.project.clusterType);
 
@@ -192,7 +214,15 @@ export async function ensureEnvironment(
 
   printSection('Building and Deploying');
   const orchestrator = new BuildOrchestrator(config, state, provider);
-  await orchestrator.buildAndDeploy();
+  await orchestrator.buildAndDeploy({
+    devServices: options.dev,
+    forcePull: options.pull,
+  });
+
+  // Persist dev services so `grove watch` knows which services to watch
+  if (options.dev?.length) {
+    state.devServices = options.dev;
+  }
 
   printSection('Waiting for Deployments');
   await waitForDeployments(state.namespace);
@@ -227,7 +257,7 @@ export async function ensureEnvironment(
 
     supervisor.register(service, {
       namespace: state.namespace,
-      serviceName: service.name,
+      serviceName: service.portForward.serviceName ?? service.name,
       remotePort: service.portForward.remotePort,
       localPort: state.ports[service.name],
       hostIp: service.portForward.hostIp || '127.0.0.1',

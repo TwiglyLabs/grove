@@ -11,6 +11,7 @@ vi.mock('child_process', () => ({
 vi.mock('../../shared/output.js', () => ({
   printInfo: vi.fn(),
   printSuccess: vi.fn(),
+  printWarning: vi.fn(),
 }));
 
 import { BuildOrchestrator } from './BuildOrchestrator.js';
@@ -224,6 +225,67 @@ describe('BuildOrchestrator', () => {
       // provider.loadImage called
       expect(provider.loadImage).toHaveBeenCalled();
       // helm upgrade called
+      expect(mockExecSync).toHaveBeenCalledWith(
+        expect.stringContaining('helm upgrade'),
+        expect.any(Object),
+      );
+    });
+
+    it('without options is backward compatible (builds all)', async () => {
+      const config = makeConfig({
+        services: [
+          makeService({ name: 'api', build: { image: 'api:latest', dockerfile: 'Dockerfile.api' } }),
+          makeService({ name: 'worker', build: { image: 'worker:latest', dockerfile: 'Dockerfile.worker' } }),
+        ],
+      });
+      const orchestrator = new BuildOrchestrator(config, makeState(), provider);
+
+      await orchestrator.buildAndDeploy();
+
+      const buildCalls = mockExecSync.mock.calls
+        .filter(([cmd]: [string]) => typeof cmd === 'string' && cmd.startsWith('docker build'));
+      expect(buildCalls).toHaveLength(2);
+    });
+
+    it('with devServices uses RegistryPuller and only builds dev services', async () => {
+      const config = makeConfig({
+        project: {
+          name: 'test-app',
+          cluster: 'test-cluster',
+          clusterType: 'kind',
+          registry: 'us-central1-docker.pkg.dev/twiglylabs/acorn',
+        },
+        services: [
+          makeService({ name: 'api', build: { image: 'api:latest', dockerfile: 'Dockerfile.api' } }),
+          makeService({ name: 'worker', build: { image: 'worker:latest', dockerfile: 'Dockerfile.worker' } }),
+        ],
+      });
+
+      // Default mock: docker image inspect fails (image doesn't exist)
+      mockExecSync.mockImplementation((cmd: string) => {
+        if (typeof cmd === 'string' && cmd.startsWith('docker image inspect')) {
+          throw new Error('No such image');
+        }
+        return '';
+      });
+
+      const orchestrator = new BuildOrchestrator(config, makeState(), provider);
+
+      await orchestrator.buildAndDeploy({ devServices: ['api'] });
+
+      // Should docker pull worker (non-dev) from registry
+      expect(mockExecSync).toHaveBeenCalledWith(
+        expect.stringContaining('docker pull'),
+        { stdio: 'inherit' },
+      );
+
+      // Should docker build only api (dev service)
+      const buildCalls = mockExecSync.mock.calls
+        .filter(([cmd]: [string]) => typeof cmd === 'string' && cmd.startsWith('docker build'));
+      expect(buildCalls).toHaveLength(1);
+      expect(buildCalls[0][0]).toContain('api:latest');
+
+      // Should still run helm upgrade
       expect(mockExecSync).toHaveBeenCalledWith(
         expect.stringContaining('helm upgrade'),
         expect.any(Object),

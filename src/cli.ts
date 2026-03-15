@@ -96,12 +96,16 @@ program
   .description('Start the development environment')
   .option('--frontend <name>', 'Start specific frontend only')
   .option('--all', 'Start all frontends')
+  .option('--dev <services>', 'Build only these services locally, pull rest from registry (comma-separated)')
+  .option('--pull', 'Force re-pull registry images even if they exist locally')
   .action(async (options) => {
     try {
       const repoId = await resolveCurrentRepo();
       await upCommand(repoId, {
         frontend: options.frontend,
         all: options.all,
+        dev: options.dev ? options.dev.split(',').map((s: string) => s.trim()) : undefined,
+        pull: options.pull,
       });
     } catch (error) {
       handleError(error);

@@ -43,6 +43,7 @@ export interface EnvironmentState {
   processes: Record<string, ProcessInfo>;
   lastEnsure: string;
   simulator?: SimulatorState;
+  devServices?: string[];
 }
 
 // --- API types (from src/api/types.ts) ---
@@ -51,6 +52,8 @@ export interface UpOptions {
   frontend?: string;
   all?: boolean;
   signal?: AbortSignal;
+  dev?: string[];
+  pull?: boolean;
 }
 
 export interface SupervisorHandle {

@@ -54,6 +54,7 @@ export const ServiceBuildSchema = z.object({
 export const PortForwardSchema = z.object({
   remotePort: z.number().int().min(1).max(65535),
   hostIp: z.string().ip({ version: 'v4' }).optional().default('127.0.0.1'),
+  serviceName: z.string().optional(),
 });
 
 export const HealthCheckSchema = z.object({
@@ -86,6 +87,7 @@ export const ProjectSchema = z.object({
   name: z.string(),
   cluster: z.string().default('twiglylabs-local'),
   clusterType: ClusterTypeSchema,
+  registry: z.string().optional(),
 });
 
 export const HelmSchema = z.object({

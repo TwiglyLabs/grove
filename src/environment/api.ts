@@ -55,6 +55,8 @@ export async function up(
   const { state, health, supervisor } = await internalEnsure(config, {
     frontend: options?.frontend,
     all: options?.all,
+    dev: options?.dev,
+    pull: options?.pull,
   });
 
   // Track supervisor for lifecycle management — stop old one first to prevent leaks
@@ -281,7 +283,22 @@ export async function watch(
     throw new EnvironmentNotRunningError();
   }
 
-  const watcher = new FileWatcher(config, state, events);
+  // When devServices is set, filter config to only watch dev services
+  let watchConfig = config;
+  if (state.devServices?.length) {
+    watchConfig = {
+      ...config,
+      services: config.services.map(s => {
+        if (s.build?.watchPaths && !state.devServices!.includes(s.name)) {
+          // Strip watchPaths from non-dev services so FileWatcher ignores them
+          return { ...s, build: { ...s.build, watchPaths: undefined } };
+        }
+        return s;
+      }),
+    };
+  }
+
+  const watcher = new FileWatcher(watchConfig, state, events);
   watcher.start();
 
   return {

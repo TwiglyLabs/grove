@@ -4,6 +4,12 @@ import type { GroveConfig, Service } from '../../config.js';
 import type { ClusterProvider, EnvironmentState } from '../types.js';
 import { printInfo, printSuccess } from '../../shared/output.js';
 import { BuildFailedError, ImageLoadFailedError, DeploymentFailedError } from '../../shared/errors.js';
+import { RegistryPuller } from './RegistryPuller.js';
+
+export interface BuildAndDeployOptions {
+  devServices?: string[];
+  forcePull?: boolean;
+}
 
 export class BuildOrchestrator {
   constructor(
@@ -112,9 +118,22 @@ export class BuildOrchestrator {
     }
   }
 
-  async buildAndDeploy(): Promise<void> {
-    this.buildAllServices();
-    this.loadAllImages();
+  async buildAndDeploy(options?: BuildAndDeployOptions): Promise<void> {
+    if (options?.devServices?.length) {
+      // Dev mode: pull non-dev from registry, build only dev services locally
+      const puller = new RegistryPuller(this.config, this.provider);
+      puller.pullAllNonDev(options.devServices, { forcePull: options.forcePull });
+
+      for (const service of this.config.services) {
+        if (service.build && options.devServices.includes(service.name)) {
+          this.buildService(service);
+          this.loadImage(service);
+        }
+      }
+    } else {
+      this.buildAllServices();
+      this.loadAllImages();
+    }
     this.helmUpgrade();
   }
 }

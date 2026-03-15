@@ -143,6 +143,37 @@ export function validateState(obj: unknown): obj is EnvironmentState {
 }
 
 /**
+ * Reconcile loaded state with current config: if new services with portForward
+ * have been added to the config since the state was created, allocate ports for
+ * them. Returns true if the state was modified and needs persisting.
+ */
+function reconcileNewServices(state: EnvironmentState, config: GroveConfig): boolean {
+  const allServices = [
+    ...config.services.filter(s => s.portForward).map(s => s.name),
+    ...(config.frontends ?? []).map(f => f.name),
+  ];
+
+  const missing = allServices.filter(name => !(name in state.ports));
+  if (missing.length === 0) return false;
+
+  const usedPorts = new Set(Object.values(state.ports));
+  let nextPort = PORT_START;
+
+  for (const name of missing) {
+    while (usedPorts.has(nextPort)) nextPort++;
+    state.ports[name] = nextPort;
+    const service = config.services.find(s => s.name === name);
+    const protocol = service?.health?.protocol === 'tcp' ? 'tcp' : 'http';
+    if (!state.urls) state.urls = {};
+    (state.urls as Record<string, string>)[name] = `${protocol}://127.0.0.1:${nextPort}`;
+    usedPorts.add(nextPort);
+    nextPort++;
+  }
+
+  return true;
+}
+
+/**
  * Read-only state access. Returns state without locking, or null if missing.
  * Used by test runner and utility commands that just need to read current state.
  * Pass explicit worktreeId to read state for a specific workspace branch.
@@ -207,6 +238,9 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
         const content = await readFile(stateFile, 'utf-8');
         const parsed = JSON.parse(content);
         if (validateState(parsed)) {
+          if (reconcileNewServices(parsed, config)) {
+            await writeFile(stateFile, JSON.stringify(parsed, null, 2));
+          }
           return parsed;
         }
         // Invalid structure — fall through to create new
@@ -225,6 +259,7 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
             const tmpContent = await readFile(tmpFile, 'utf-8');
             const tmpParsed = JSON.parse(tmpContent);
             if (validateState(tmpParsed)) {
+              reconcileNewServices(tmpParsed, config);
               try { await rename(tmpFile, stateFile); } catch { /* best-effort */ }
               return tmpParsed;
             }
@@ -260,6 +295,7 @@ export async function loadOrCreateState(config: GroveConfig): Promise<Environmen
         const content = await readFile(stateFile, 'utf-8');
         const parsed = JSON.parse(content);
         if (validateState(parsed)) {
+          reconcileNewServices(parsed, config);
           return parsed;
         }
         // Invalid structure (e.g. '{}' from crashed bootstrap) — fall through to create new

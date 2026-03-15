@@ -73,6 +73,19 @@ describe('ProjectSchema', () => {
       clusterType: 'minikube',
     })).toThrow();
   });
+
+  it('accepts optional registry field', () => {
+    const result = ProjectSchema.parse({
+      name: 'my-project',
+      registry: 'us-central1-docker.pkg.dev/twiglylabs/acorn',
+    });
+    expect(result.registry).toBe('us-central1-docker.pkg.dev/twiglylabs/acorn');
+  });
+
+  it('parses without registry (backward compatible)', () => {
+    const result = ProjectSchema.parse({ name: 'my-project' });
+    expect(result.registry).toBeUndefined();
+  });
 });
 
 describe('ServiceSchema', () => {
