@@ -98,6 +98,7 @@ program
   .option('--all', 'Start all frontends')
   .option('--dev <services>', 'Build only these services locally, pull rest from registry (comma-separated)')
   .option('--pull', 'Force re-pull registry images even if they exist locally')
+  .option('--only <services>', 'Deploy only these services (vCluster mode, comma-separated)')
   .action(async (options) => {
     try {
       const repoId = await resolveCurrentRepo();
@@ -106,6 +107,7 @@ program
         all: options.all,
         dev: options.dev ? options.dev.split(',').map((s: string) => s.trim()) : undefined,
         pull: options.pull,
+        only: options.only ? options.only.split(',').map((s: string) => s.trim()) : undefined,
       });
     } catch (error) {
       handleError(error);

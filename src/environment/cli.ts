@@ -17,6 +17,8 @@ import {
   printError,
 } from '../shared/output.js';
 import * as api from './api.js';
+import { isVClusterRepo, loadVClusterConfig } from './vcluster-loader.js';
+import { vclusterUp, vclusterDown } from './vcluster-api.js';
 
 // --- Up ---
 
@@ -25,9 +27,26 @@ export interface UpCommandOptions {
   all?: boolean;
   dev?: string[];
   pull?: boolean;
+  /** vCluster mode: deploy only these services (new format only) */
+  only?: string[];
 }
 
 export async function upCommand(repoId: RepoId, options: UpCommandOptions): Promise<void> {
+  // Detect new vCluster format vs legacy format
+  if (await isVClusterRepo(repoId)) {
+    const config = await loadVClusterConfig(repoId);
+    printInfo('Starting vCluster environment...');
+    const result = await vclusterUp(
+      // Use the platform chart name as a project name identifier
+      config.platform.chart.split('/').pop() ?? 'grove',
+      config,
+      { only: options.only },
+    );
+    printSuccess(`Environment up: vCluster ${result.clusterName}`);
+    return;
+  }
+
+  // Legacy path
   const config = await loadConfig(repoId);
   printBanner(config.project.name);
 
@@ -43,6 +62,16 @@ export async function upCommand(repoId: RepoId, options: UpCommandOptions): Prom
 // --- Down ---
 
 export async function downCommand(repoId: RepoId): Promise<void> {
+  // Detect new vCluster format vs legacy format
+  if (await isVClusterRepo(repoId)) {
+    const config = await loadVClusterConfig(repoId);
+    printInfo('Tearing down vCluster environment...');
+    const projectName = config.platform.chart.split('/').pop() ?? 'grove';
+    const result = await vclusterDown(projectName);
+    printSuccess(`vCluster deleted: ${result.clusterName}`);
+    return;
+  }
+
   printInfo('Stopping processes...');
 
   const result = await api.down(repoId);
