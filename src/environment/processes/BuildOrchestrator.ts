@@ -25,15 +25,22 @@ export class BuildOrchestrator {
 
     printInfo(`Building ${service.name}...`);
 
-    const { image, dockerfile, args } = service.build;
+    const { image, dockerfile, args, secrets } = service.build;
     const dockerfilePath = join(this.config.repoRoot, dockerfile);
 
     const buildArgs = args
       ? Object.entries(args).map(([k, v]) => `--build-arg ${k}=${v}`).join(' ')
       : '';
 
-    // docker build -t <image> -f <dockerfile> [--build-arg ...] <repoRoot>
-    const buildCmd = `docker build -t ${image} -f ${dockerfilePath} ${buildArgs} ${this.config.repoRoot}`;
+    const secretFlags = secrets
+      ? Object.entries(secrets)
+          .map(([id, src]) => `--secret id=${id},src=${join(this.config.repoRoot, src)}`)
+          .join(' ')
+      : '';
+
+    // DOCKER_BUILDKIT=1 required for --secret support
+    // Use --network=host for Colima VZ driver (bridge network can't route to internet)
+    const buildCmd = `DOCKER_BUILDKIT=1 docker build --network=host -t ${image} -f ${dockerfilePath} ${buildArgs} ${secretFlags} ${this.config.repoRoot}`;
 
     try {
       execSync(buildCmd, { stdio: 'inherit' });

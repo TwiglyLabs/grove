@@ -141,9 +141,12 @@ describe('BuildOrchestrator', () => {
       orchestrator.buildService(service);
 
       expect(mockExecSync).toHaveBeenCalledWith(
-        expect.stringContaining('docker build -t api:latest'),
+        expect.stringContaining('docker build'),
         { stdio: 'inherit' },
       );
+      const cmd = mockExecSync.mock.calls[0][0] as string;
+      expect(cmd).toContain('-t api:latest');
+      expect(cmd).toContain('DOCKER_BUILDKIT=1');
     });
 
     it('skips when service has no build config', () => {
@@ -153,6 +156,32 @@ describe('BuildOrchestrator', () => {
       orchestrator.buildService(service);
 
       expect(mockExecSync).not.toHaveBeenCalled();
+    });
+
+    it('includes --secret flags when secrets are configured', () => {
+      const orchestrator = new BuildOrchestrator(makeConfig(), makeState(), provider);
+      const service = makeService({
+        build: {
+          image: 'api:latest',
+          dockerfile: 'Dockerfile',
+          secrets: { npmrc: '.npmrc.build' },
+        },
+      });
+
+      orchestrator.buildService(service);
+
+      const cmd = mockExecSync.mock.calls[0][0] as string;
+      expect(cmd).toContain('--secret id=npmrc,src=/tmp/test-repo/.npmrc.build');
+    });
+
+    it('omits --secret when no secrets configured', () => {
+      const orchestrator = new BuildOrchestrator(makeConfig(), makeState(), provider);
+      const service = makeService();
+
+      orchestrator.buildService(service);
+
+      const cmd = mockExecSync.mock.calls[0][0] as string;
+      expect(cmd).not.toContain('--secret');
     });
 
     it('throws BuildFailedError on failure', () => {
@@ -243,7 +272,7 @@ describe('BuildOrchestrator', () => {
       await orchestrator.buildAndDeploy();
 
       const buildCalls = mockExecSync.mock.calls
-        .filter(([cmd]: [string]) => typeof cmd === 'string' && cmd.startsWith('docker build'));
+        .filter(([cmd]: [string]) => typeof cmd === 'string' && cmd.includes('docker build'));
       expect(buildCalls).toHaveLength(2);
     });
 
@@ -281,7 +310,7 @@ describe('BuildOrchestrator', () => {
 
       // Should docker build only api (dev service)
       const buildCalls = mockExecSync.mock.calls
-        .filter(([cmd]: [string]) => typeof cmd === 'string' && cmd.startsWith('docker build'));
+        .filter(([cmd]: [string]) => typeof cmd === 'string' && cmd.includes('docker build'));
       expect(buildCalls).toHaveLength(1);
       expect(buildCalls[0][0]).toContain('api:latest');
 

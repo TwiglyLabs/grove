@@ -48,6 +48,7 @@ export const ServiceBuildSchema = z.object({
   image: z.string(),
   dockerfile: z.string(),
   args: z.record(z.string()).optional(),
+  secrets: z.record(z.string()).optional(),
   watchPaths: z.array(z.string()).optional(),
 });
 
